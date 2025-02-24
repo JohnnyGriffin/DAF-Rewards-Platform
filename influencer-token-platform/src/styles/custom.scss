@@ -1,0 +1,39 @@
+// src/styles/custom.scss
+
+// Define theme variables
+$body-bg: #121212;
+$text-color: #ffffff;
+$primary: #00aeff;
+$secondary: #ff4081;
+
+body {
+  background-color: $body-bg;
+  color: $text-color;
+  font-family: 'Inter', sans-serif;
+}
+
+.navbar {
+  background-color: #1E1E1E !important;
+}
+
+.btn-primary {
+  background-color: $primary;
+  border-color: $primary;
+  &:hover {
+    background-color: darken($primary, 10%);
+    border-color: darken($primary, 10%);
+  }
+}
+
+.card {
+  background-color: rgba(20, 20, 20, 0.9);
+  border: none;
+  border-radius: 10px;
+}
+
+a {
+  color: $primary;
+  &:hover {
+    color: lighten($primary, 10%);
+  }
+}
