@@ -13,10 +13,14 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useNavigate } from 'react-router-dom';
-import { createTokenOnBlockchain } from '../blockchain';
+import { deployTokenContract, initBlockchain } from '../blockchain';
 import { firestore } from '../firebase';
 
 const steps = [
@@ -32,6 +36,9 @@ function TokenCreationWizard() {
   const [activeStep, setActiveStep] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [influencers, setInfluencers] = useState([]);
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmData, setConfirmData] = useState(null);
 
   const [tokenInfo, setTokenInfo] = useState({
     influencerId: '',
@@ -75,43 +82,37 @@ function TokenCreationWizard() {
 
   const handleNext = async () => {
     if (activeStep === steps.length - 1) {
-      // Final step: deploy token
+      // Final step: deploy token contract and show confirmation dialog
       try {
-        const tokenPriceNum = parseFloat(tokenInfo.tokenPrice) || 0;
-        const revenueShareNum = parseFloat(tokenInfo.revenueShare) || 0;
-        const totalSupplyNum = parseFloat(tokenInfo.totalSupply) || 0;
-        const vestingPeriodNum = parseFloat(tokenInfo.vestingPeriod) || 0;
-
-        // Create on-chain token
-        const tx = await createTokenOnBlockchain(
+        const tokenContract = await deployTokenContract(
           tokenInfo.tokenName,
-          tokenPriceNum,
-          revenueShareNum,
           tokenInfo.tokenSymbol,
-          totalSupplyNum,
-          vestingPeriodNum
+          tokenInfo.totalSupply
         );
-
-        // Save to Firestore
         const tokenDocRef = await firestore.collection('tokens').add({
           ...tokenInfo,
           creatorId: tokenInfo.influencerId,
           createdAt: new Date(),
-          contractAddress: tx?.contractAddress || '0xLIVEADDRESS',
+          contractAddress: tokenContract.address,
         });
-
-        // Landing page URL
         const landingPage = `${baseUrl}/landing/${tokenDocRef.id}`;
         await firestore.collection('tokens').doc(tokenDocRef.id).update({ landingPage });
-
-        alert('Token deployed successfully!');
-        navigate('/admin');
+        setConfirmData({
+          tokenName: tokenInfo.tokenName,
+          tokenSymbol: tokenInfo.tokenSymbol,
+          tokenPrice: tokenInfo.tokenPrice,
+          revenueShare: tokenInfo.revenueShare,
+          totalSupply: tokenInfo.totalSupply,
+          vestingPeriod: tokenInfo.vestingPeriod,
+          contractAddress: tokenContract.address,
+          landingPage: landingPage,
+        });
+        setConfirmDialogOpen(true);
       } catch (error) {
         console.error('Error deploying token:', error);
         alert(error.message);
       }
     } else {
-      // Next step
       if (activeStep === steps.length - 2) {
         setPreviewData(tokenInfo);
       }
@@ -133,7 +134,6 @@ function TokenCreationWizard() {
       case 0:
         return (
           <Box sx={{ mt: 2 }}>
-            {/* Influencer (Creator) Selection */}
             <Typography variant="subtitle1" color="white">
               Influencer (Creator) Name
             </Typography>
@@ -158,7 +158,6 @@ function TokenCreationWizard() {
               ))}
             </TextField>
 
-            {/* Token Name */}
             <Typography variant="subtitle1" color="white">
               Token Name
             </Typography>
@@ -174,7 +173,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Token Symbol */}
             <Typography variant="subtitle1" color="white">
               Token Symbol
             </Typography>
@@ -190,7 +188,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Total Supply */}
             <Typography variant="subtitle1" color="white">
               Total Supply
             </Typography>
@@ -207,7 +204,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Decimals */}
             <Typography variant="subtitle1" color="white">
               Decimals
             </Typography>
@@ -228,7 +224,6 @@ function TokenCreationWizard() {
       case 1:
         return (
           <Box sx={{ mt: 2 }}>
-            {/* Revenue Share */}
             <Typography variant="subtitle1" color="white">
               Revenue Share (%)
             </Typography>
@@ -245,7 +240,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Distribution Frequency */}
             <Typography variant="subtitle1" color="white">
               Distribution Frequency (seconds)
             </Typography>
@@ -262,7 +256,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Minimum Payout Threshold */}
             <Typography variant="subtitle1" color="white">
               Minimum Payout Threshold ($)
             </Typography>
@@ -279,7 +272,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Vesting Period */}
             <Typography variant="subtitle1" color="white">
               Vesting Period (days)
             </Typography>
@@ -300,7 +292,6 @@ function TokenCreationWizard() {
       case 2:
         return (
           <Box sx={{ mt: 2 }}>
-            {/* Token Price */}
             <Typography variant="subtitle1" color="white">
               Token Price ($)
             </Typography>
@@ -317,7 +308,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Platform Fee */}
             <Typography variant="subtitle1" color="white">
               Platform Fee (%)
             </Typography>
@@ -334,7 +324,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Creator Royalty */}
             <Typography variant="subtitle1" color="white">
               Creator Royalty (%)
             </Typography>
@@ -387,7 +376,6 @@ function TokenCreationWizard() {
               sx={{ color: 'white', mt: 1 }}
             />
 
-            {/* Legal Disclaimer */}
             <Typography variant="subtitle1" color="white">
               Legal Disclaimer / T&Cs
             </Typography>
@@ -405,7 +393,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Terms & Conditions URL */}
             <Typography variant="subtitle1" color="white">
               Terms & Conditions URL
             </Typography>
@@ -421,7 +408,6 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            {/* Jurisdiction */}
             <Typography variant="subtitle1" color="white">
               Jurisdiction
             </Typography>
@@ -498,35 +484,103 @@ function TokenCreationWizard() {
   };
 
   return (
-    <Accordion
-      expanded={expanded}
-      onChange={handleAccordionToggle}
-      sx={{ width: '100%', mt: 4, bgcolor: 'grey.900', color: 'white' }}
-    >
-      <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }} />}>
-        <Typography variant="h5">Token Creation Wizard</Typography>
-      </AccordionSummary>
-      <AccordionDetails>
-        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
+    <>
+      <Accordion
+        expanded={expanded}
+        onChange={handleAccordionToggle}
+        sx={{ width: '100%', mt: 4, bgcolor: 'grey.900', color: 'white' }}
+      >
+        <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }} />}>
+          <Typography variant="h5">Token Creation Wizard</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
+            {steps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
 
-        {getStepContent(activeStep)}
+          {getStepContent(activeStep)}
 
-        <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-          <Button disabled={activeStep === 0} onClick={handleBack} variant="outlined">
-            Back
+          <Box sx={{ mt: 4, display: 'flex', gap: 2, justifyContent: 'space-between' }}>
+            <Button disabled={activeStep === 0} onClick={handleBack} variant="outlined">
+              Back
+            </Button>
+            {activeStep === steps.length - 1 && (
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={() => {
+                  try {
+                    initBlockchain();
+                    setWalletConnected(true);
+                  } catch (err) {
+                    alert(err.message);
+                  }
+                }}
+                disabled={walletConnected}
+              >
+                {walletConnected ? 'Wallet Connected' : 'Connect Wallet (Test)'}
+              </Button>
+            )}
+            <Button
+              onClick={handleNext}
+              variant="contained"
+              color="primary"
+              disabled={activeStep === steps.length - 1 && !walletConnected}
+            >
+              {activeStep === steps.length - 1 ? 'Deploy Token' : 'Next'}
+            </Button>
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)}>
+        <DialogTitle>Token Deployed Successfully</DialogTitle>
+        <DialogContent>
+          {confirmData && (
+            <Box>
+              <Typography variant="subtitle1">
+                <strong>Token Name:</strong> {confirmData.tokenName}
+              </Typography>
+              <Typography variant="subtitle1">
+                <strong>Token Symbol:</strong> {confirmData.tokenSymbol}
+              </Typography>
+              <Typography variant="subtitle1">
+                <strong>Token Price:</strong> ${confirmData.tokenPrice}
+              </Typography>
+              <Typography variant="subtitle1">
+                <strong>Revenue Share:</strong> {confirmData.revenueShare}%
+              </Typography>
+              <Typography variant="subtitle1">
+                <strong>Total Supply:</strong> {confirmData.totalSupply}
+              </Typography>
+              <Typography variant="subtitle1">
+                <strong>Vesting Period:</strong> {confirmData.vestingPeriod} days
+              </Typography>
+              <Typography variant="subtitle1">
+                <strong>Contract Address:</strong> {confirmData.contractAddress}
+              </Typography>
+              <Typography variant="subtitle1">
+                <strong>Landing Page:</strong>{' '}
+                <a href={confirmData.landingPage} target="_blank" rel="noopener noreferrer" style={{ color: '#00aeff' }}>
+                  {confirmData.landingPage}
+                </a>
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialogOpen(false)}>Close</Button>
+          <Button onClick={() => navigate('/admin')} variant="contained" color="primary">
+            OK
           </Button>
-          <Button onClick={handleNext} variant="contained" color="primary">
-            {activeStep === steps.length - 1 ? 'Deploy Token' : 'Next'}
-          </Button>
-        </Box>
-      </AccordionDetails>
-    </Accordion>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
 

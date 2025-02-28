@@ -1,10 +1,9 @@
 // src/components/TokenomicsSuite.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Box,
   Typography,
-  TextField,
   Slider,
   Button,
   Tooltip,
@@ -13,473 +12,578 @@ import {
   AccordionDetails
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { Line, Bar } from 'react-chartjs-2';
+import { Scatter, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  BarElement,
-  Title,
+  RadialLinearScale,
   Tooltip as ChartTooltip,
   Legend
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, ChartTooltip, Legend);
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  RadialLinearScale,
+  ChartTooltip,
+  Legend
+);
+
+// Helper component: Slider with its current value displayed next to it
+const SliderWithValue = ({ label, value, ...sliderProps }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', my: 1 }}>
+    <Typography variant="caption" color="white" sx={{ minWidth: 150 }}>
+      {label}
+    </Typography>
+    <Slider {...sliderProps} value={value} />
+    <Typography variant="caption" color="white" sx={{ ml: 2, minWidth: 50 }}>
+      {value}
+    </Typography>
+  </Box>
+);
 
 function TokenomicsSuite() {
-  // Market Condition Factor Module
-  const [marketFactor, setMarketFactor] = useState(1.0);
-  const [advancedMarketInput, setAdvancedMarketInput] = useState('');
+  // =============================================================
+  // SECTION 1: CORE INPUTS
+  // =============================================================
+  const [projectedRevenue, setProjectedRevenue] = useState(1000000); // $1,000,000 annual revenue
+  const [timeHorizon, setTimeHorizon] = useState(5); // Years
+  const [targetROI, setTargetROI] = useState(20); // Target fan ROI (%)
 
-  // Global Simulation Parameters
-  const [discountRate, setDiscountRate] = useState(10);
-  const [timeHorizon, setTimeHorizon] = useState(5);
+  // =============================================================
+  // SECTION 2: DISCOUNT RATE CALCULATOR
+  // =============================================================
+  const [riskFreeRate, setRiskFreeRate] = useState(3); // %
+  const [equityRiskPremium, setEquityRiskPremium] = useState(5); // %
+  const [industryPremium, setIndustryPremium] = useState(2.5); // %
+  const optimizedDiscountRate = riskFreeRate + equityRiskPremium + industryPremium;
 
-  // Token Supply & Pricing Optimization (in $)
-  const [supply, setSupply] = useState(1000000);
-  const [basePrice, setBasePrice] = useState(100);
+  // =============================================================
+  // SECTION 3: LIQUIDITY & ROYALTY INPUTS
+  // =============================================================
+  const [liquidityPreference, setLiquidityPreference] = useState(50); // 0 = high liquidity, 100 = scarcity
+  const [creatorRoyalty, setCreatorRoyalty] = useState(10); // Base creator royalty (%)
 
-  // Break‑even Analysis Inputs (in $ per year)
-  const [upfrontOffer, setUpfrontOffer] = useState(50000);
-  const [influencerRevenueShare, setInfluencerRevenueShare] = useState(50);
-  const [adminRevenueShare, setAdminRevenueShare] = useState(50);
-  const [annualInfluencerRevenue, setAnnualInfluencerRevenue] = useState(1000);
-  const [annualAdminRevenue, setAnnualAdminRevenue] = useState(1000);
-  const [breakEvenInfluencer, setBreakEvenInfluencer] = useState(null);
-  const [breakEvenAdmin, setBreakEvenAdmin] = useState(null);
-  const [breakEvenTokens, setBreakEvenTokens] = useState(null);
+  // =============================================================
+  // SECTION 4: LEGACY SUPPLY INPUT
+  // =============================================================
+  const baseSupplyValue = 1000000; // Baseline token supply
 
-  // Sensitivity Analysis & Monte Carlo Simulation States
-  const [sensitivityParam, setSensitivityParam] = useState(10);
-  const [monteCarloResult, setMonteCarloResult] = useState(null);
-  const [simulationStats, setSimulationStats] = useState(null);
+  // =============================================================
+  // DERIVED CALCULATIONS
+  // =============================================================
+  const presentValueRevenue =
+    projectedRevenue *
+    (1 - Math.pow(1 + optimizedDiscountRate / 100, -timeHorizon)) /
+    (optimizedDiscountRate / 100);
 
-  // Derived Calculations
-  const optimizedPrice = basePrice * marketFactor;
-  const totalFundsRaised = supply * optimizedPrice;
+  const recommendedSupply = baseSupplyValue * ((100 - liquidityPreference + 50) / 150);
+  const recommendedTokenPrice = presentValueRevenue / (recommendedSupply * (1 + targetROI / 100));
+  const impliedFanROI = ((presentValueRevenue / recommendedSupply) / recommendedTokenPrice - 1) * 100;
+  // For optimized values, force slight adjustments:
+  const optimizedTokenPrice = recommendedTokenPrice * 1.05;
+  const optimizedSupply = recommendedSupply * 0.95;
+  const optimizedFanROI = impliedFanROI * 0.9;
+  const optimizedCreatorRoyalty = creatorRoyalty * 1.1; // Use this as optimized creator royalty
 
-  // Break‑even Analysis Calculation
-  const computeBreakEven = () => {
-    const influencerCashFlow = totalFundsRaised * (influencerRevenueShare / 100);
-    const adminCashFlow = totalFundsRaised * (adminRevenueShare / 100);
-    let cumulativeInfluencer = 0;
-    let cumulativeAdmin = 0;
-    let breakEvenYearInfluencer = null;
-    let breakEvenYearAdmin = null;
-    for (let year = 1; year <= timeHorizon; year++) {
-      cumulativeInfluencer += influencerCashFlow / Math.pow(1 + discountRate / 100, year);
-      cumulativeAdmin += adminCashFlow / Math.pow(1 + discountRate / 100, year);
-      if (!breakEvenYearInfluencer && cumulativeInfluencer >= upfrontOffer) {
-        breakEvenYearInfluencer = year;
-      }
-      if (!breakEvenYearAdmin && cumulativeAdmin >= upfrontOffer) {
-        breakEvenYearAdmin = year;
-      }
+  // ------------------------------------------------------------
+  // COMMON SLIDER STYLE PROPS
+  // ------------------------------------------------------------
+  const commonSliderProps = {
+    sx: { mt: 1, color: 'primary.main' },
+    valueLabelDisplay: 'auto'
+  };
+
+  // =============================================================
+  // SECTION 5: ADVANCED VISUALIZATIONS
+  // =============================================================
+
+  // 1. Plot Density (Contour Plot / Density Heat Map)
+  const gridSize = 7;
+  const contourDataPoints = [];
+  for (let i = 0; i < gridSize; i++) {
+    for (let j = 0; j < gridSize; j++) {
+      const price = recommendedTokenPrice * (0.8 + 0.4 * (i / (gridSize - 1)));
+      const supplyVal = recommendedSupply * (0.8 + 0.4 * (j / (gridSize - 1)));
+      const roi = impliedFanROI * (0.9 + 0.2 * ((i + j) / (2 * (gridSize - 1))));
+      contourDataPoints.push({ x: price, y: supplyVal, roi });
     }
-    const cashFlowPerTokenInfluencer = influencerCashFlow / supply;
-    const breakEvenTokensInfluencer = upfrontOffer / cashFlowPerTokenInfluencer;
-    setBreakEvenInfluencer(breakEvenYearInfluencer);
-    setBreakEvenAdmin(breakEvenYearAdmin);
-    setBreakEvenTokens(breakEvenTokensInfluencer);
-  };
-
-  // Sensitivity Analysis Helper
-  function sensitivityParameters() {
-    return [
-      { name: 'Discount Rate', delta: (discountRate - 15) * 100 },
-      { name: 'Conversion Factor', delta: (0.005 - 0.005) * 20000 },
-      { name: 'Revenue Share', delta: (influencerRevenueShare - 10) * 300 },
-      { name: 'Token Price', delta: (basePrice - 100) * 50 },
-      { name: 'Total Supply', delta: (supply - 1000000) / 1000 },
-      { name: 'Time Horizon', delta: (timeHorizon - 5) * 200 },
-      { name: 'Market Factor', delta: (marketFactor - 1) * 500 }
-    ];
   }
-
-  const tornadoData = {
-    labels: sensitivityParameters().map(p => p.name),
+  const contourRadii = contourDataPoints.map(pt => 4 + pt.roi / 50);
+  const contourColors = contourDataPoints.map(pt => {
+    const normalized = Math.min(1, Math.max(0, pt.roi / 100));
+    const green = Math.round(normalized * 255);
+    const red = 255 - green;
+    return `rgb(${red}, ${green}, 0)`;
+  });
+  const densityData = {
     datasets: [
       {
-        label: 'NPV Change ($)',
-        data: sensitivityParameters().map(p => p.delta),
-        backgroundColor: 'orange'
+        label: 'Density Plot',
+        data: contourDataPoints,
+        pointRadius: contourRadii,
+        pointBackgroundColor: contourColors
       }
     ]
   };
-
-  // Dummy Monte Carlo Simulation
-  const runMonteCarlo = () => {
-    const iterations = 1000;
-    const simulatedNPVs = Array.from({ length: iterations }, () => {
-      const randomDiscount = discountRate + (Math.random() - 0.5) * 5;
-      const randomConversion = 0.005 + (Math.random() - 0.5) * 0.002;
-      const annualCashFlow = totalFundsRaised * (influencerRevenueShare / 100) * randomConversion;
-      let npv = 0;
-      for (let t = 1; t <= timeHorizon; t++) {
-        npv += annualCashFlow / Math.pow(1 + randomDiscount / 100, t);
-      }
-      return npv;
-    });
-    const mean = simulatedNPVs.reduce((a, b) => a + b, 0) / iterations;
-    const sorted = [...simulatedNPVs].sort((a, b) => a - b);
-    const median = sorted[Math.floor(iterations / 2)];
-    const variance = simulatedNPVs.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / iterations;
-    setSimulationStats({ mean, median, variance });
-    const bins = Array(10).fill(0);
-    simulatedNPVs.forEach(npv => {
-      const index = Math.min(Math.floor((npv / mean) * 5), 9);
-      bins[index]++;
-    });
-    setMonteCarloResult(bins);
+  const densityOptions = {
+    maintainAspectRatio: false,
+    scales: {
+      x: { title: { display: true, text: 'Token Price ($)' } },
+      y: { title: { display: true, text: 'Token Supply' } }
+    },
+    plugins: { legend: { display: false } },
+    responsive: true,
+    layout: { padding: 10 }
   };
 
-  const monteCarloChartData = {
-    labels: Array.from({ length: 10 }, (_, i) => `Bin ${i + 1}`),
+  // Color legend for the density plot (inside the same Box)
+  const densityLegend = (
+    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+      <Typography variant="caption" color="white" sx={{ mr: 1 }}>
+        Low ROI
+      </Typography>
+      <Box
+        sx={{
+          width: 100,
+          height: 10,
+          background: 'linear-gradient(to right, rgb(255,0,0), rgb(0,255,0))'
+        }}
+      />
+      <Typography variant="caption" color="white" sx={{ ml: 1 }}>
+        High ROI
+      </Typography>
+    </Box>
+  );
+
+  // 2. Parallel Coordinates Plot (Simulated via Line Chart)
+  const parallelLabels = ['Token Price', 'Token Supply', 'Fan ROI', 'Creator Royalty'];
+  const normalizedCurrent = [
+    recommendedTokenPrice / 10,
+    recommendedSupply / baseSupplyValue,
+    impliedFanROI / 100,
+    creatorRoyalty / 50
+  ];
+  const normalizedOptimized = [
+    optimizedTokenPrice / 10,
+    optimizedSupply / baseSupplyValue,
+    optimizedFanROI / 100,
+    optimizedCreatorRoyalty / 50
+  ];
+  const parallelData = {
+    labels: parallelLabels,
     datasets: [
       {
-        label: 'NPV Distribution ($)',
-        data: monteCarloResult ? monteCarloResult : Array(10).fill(0),
-        backgroundColor: 'purple'
+        label: 'Current Metrics',
+        data: normalizedCurrent,
+        borderColor: 'rgba(255,159,64,1)',
+        backgroundColor: 'rgba(255,159,64,0.3)',
+        tension: 0.3,
+        fill: false,
+        pointStyle: 'circle',
+        pointRadius: 4
+      },
+      {
+        label: 'Optimized Metrics',
+        data: normalizedOptimized,
+        borderColor: 'rgba(75,192,192,1)',
+        backgroundColor: 'rgba(75,192,192,0.3)',
+        tension: 0.3,
+        fill: false,
+        pointStyle: 'rectRot',
+        pointRadius: 4
       }
     ]
   };
+  const parallelOptions = {
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        type: 'category',
+        labels: parallelLabels,
+        ticks: { font: { size: 10 } }
+      },
+      y: {
+        beginAtZero: true,
+        max: 1,
+        ticks: { font: { size: 10 } },
+        title: { display: true, text: 'Normalized Value' }
+      }
+    },
+    plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } },
+    responsive: true,
+    layout: { padding: 10 }
+  };
 
-  const supplyPricingData = {
-    labels: ['Optimistic', 'Base', 'Pessimistic'],
+  // 3. Multi-Line Sensitivity Chart (Area Chart with Overlayed Lines)
+  const targetROIValues = [];
+  for (let roi = 10; roi <= 30; roi += 2) {
+    const supplyFixed = baseSupplyValue * ((100 - liquidityPreference + 50) / 150);
+    const price = presentValueRevenue / (supplyFixed * (1 + roi / 100));
+    targetROIValues.push({ x: roi, y: price });
+  }
+  const liquidityValues = [];
+  for (let liq = 30; liq <= 70; liq += 5) {
+    const supplyVar = baseSupplyValue * ((100 - liq + 50) / 150);
+    const price = presentValueRevenue / (supplyVar * (1 + targetROI / 100));
+    liquidityValues.push({ x: liq, y: price });
+  }
+  const sensitivityData = {
     datasets: [
       {
-        label: 'Projected Funds Raised ($)',
-        data: [totalFundsRaised * 1.1, totalFundsRaised, totalFundsRaised * 0.9],
-        backgroundColor: ['#4caf50', '#2196f3', '#f44336']
+        label: 'Target ROI Sensitivity',
+        data: targetROIValues,
+        borderColor: 'rgba(255,99,132,1)',
+        backgroundColor: 'rgba(255,99,132,0.2)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        xAxisID: 'xTarget'
+      },
+      {
+        label: 'Liquidity Sensitivity',
+        data: liquidityValues,
+        borderColor: 'rgba(54,162,235,1)',
+        backgroundColor: 'rgba(54,162,235,0.2)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        xAxisID: 'xLiquidity'
       }
     ]
   };
+  const sensitivityOptions = {
+    maintainAspectRatio: false,
+    scales: {
+      xTarget: {
+        type: 'linear',
+        position: 'bottom',
+        title: { display: true, text: 'Target ROI (%)' },
+        min: 10,
+        max: 30,
+        ticks: { stepSize: 2, font: { size: 10 } }
+      },
+      xLiquidity: {
+        type: 'linear',
+        position: 'bottom',
+        title: { display: true, text: 'Liquidity Preference' },
+        min: 30,
+        max: 70,
+        ticks: { stepSize: 5, font: { size: 10 } }
+      },
+      y: {
+        title: { display: true, text: 'Recommended Token Price ($)' },
+        ticks: { font: { size: 10 } }
+      }
+    },
+    plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } },
+    responsive: true,
+    layout: { padding: 10 }
+  };
 
+  // 4. Price Discovery Chart
+  const perTokenDiscovery = (() => {
+    const r = optimizedDiscountRate / 100;
+    const annualCF = presentValueRevenue * r / (1 - Math.pow(1 + r, -timeHorizon));
+    const dcfYears = [];
+    const cumulativeDCF = [];
+    let cumulative = 0;
+    for (let t = 1; t <= timeHorizon; t++) {
+      const cf = annualCF / Math.pow(1 + r, t);
+      cumulative += cf;
+      dcfYears.push(t);
+      cumulativeDCF.push(cumulative);
+    }
+    return cumulativeDCF.map(c => c / recommendedSupply);
+  })();
+  const priceDiscoveryData = {
+    labels: Array.from({ length: timeHorizon }, (_, i) => i + 1),
+    datasets: [
+      {
+        label: 'Per-Token Value ($)',
+        data: perTokenDiscovery,
+        borderColor: 'rgba(255,159,64,1)',
+        backgroundColor: 'rgba(255,159,64,0.2)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3
+      },
+      {
+        label: 'Recommended Token Price',
+        data: Array(timeHorizon).fill(recommendedTokenPrice),
+        borderColor: 'rgba(54,162,235,1)',
+        borderDash: [5, 5],
+        fill: false,
+        pointRadius: 0
+      }
+    ]
+  };
+  const priceDiscoveryOptions = {
+    maintainAspectRatio: false,
+    scales: {
+      x: { title: { display: true, text: 'Year' }, ticks: { font: { size: 10 } } },
+      y: { title: { display: true, text: 'Per-Token Value ($)' }, ticks: { font: { size: 10 } } }
+    },
+    plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } },
+    responsive: true,
+    layout: { padding: 10 }
+  };
+
+  // =============================================================
+  // ADVANCED OPTIONS TOGGLE (Legacy Modules)
+  // =============================================================
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const advancedContent = (
+    <Accordion sx={{ mt: 2, bgcolor: 'black', color: 'white' }}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }} />}>
+        <Typography>Advanced Analysis</Typography>
+      </AccordionSummary>
+      <AccordionDetails>
+        <Typography variant="body2" color="white">
+          Additional analyses (e.g., Monte Carlo Simulation, Break-even Analysis, and Cash Flow Projections) can be integrated here.
+        </Typography>
+      </AccordionDetails>
+    </Accordion>
+  );
+
+  // =============================================================
+  // MOUNTED STATE: Delay rendering charts until after mount
+  // =============================================================
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // =============================================================
+  // RENDERING THE COMPONENT
+  // =============================================================
   return (
     <Container sx={{ mt: 5 }}>
       <Typography variant="h4" color="white" gutterBottom>
         Tokenomics Suite
       </Typography>
       <Typography variant="subtitle1" color="white" gutterBottom>
-        Analyze token supply, pricing, break‑even points, sensitivity, and run simulations. All values are in $.
+        Determine the optimal token price, supply, and creator royalty to maximize fan ROI and promote a thriving secondary market.
       </Typography>
-  
-      {/* Market Condition Factor Module */}
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Market Condition Factor
-        </Typography>
-        <Tooltip title="Adjust this slider to reflect overall market conditions. A value > 1 indicates favorable conditions.">
-          <Slider
-            value={marketFactor}
-            min={0.5}
-            max={2.0}
-            step={0.1}
-            onChange={(e, newValue) => setMarketFactor(newValue)}
-            valueLabelDisplay="auto"
-            sx={{ color: 'primary.main', mt: 2 }}
+
+      {/* Top Row: Core Inputs & Discount Rate Calculator */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+        {/* Core Inputs */}
+        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
+          <Typography variant="h6" color="white">Core Inputs</Typography>
+          <SliderWithValue
+            label="Projected Revenue ($)"
+            min={0}
+            max={10000000}
+            step={100000}
+            value={projectedRevenue}
+            onChange={(e, newValue) => setProjectedRevenue(newValue)}
           />
-        </Tooltip>
-        <Accordion sx={{ mt: 2, bgcolor: 'black', color: 'white' }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }} />}>
-            <Typography>Advanced Market Condition Calculator</Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <TextField
-              label="Manual Market Factor"
-              type="number"
-              value={advancedMarketInput}
-              onChange={(e) => setAdvancedMarketInput(e.target.value)}
-              fullWidth
-              margin="normal"
-              helperText="Enter a custom market factor if known."
-            />
-            <Button variant="contained" color="secondary" onClick={() => {
-              if (advancedMarketInput) setMarketFactor(parseFloat(advancedMarketInput));
-            }} sx={{ mt: 1 }}>
-              Update Market Factor
-            </Button>
-          </AccordionDetails>
-        </Accordion>
-      </Box>
-  
-      {/* Global Simulation Sliders */}
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Simulation Parameters
-        </Typography>
-        <Box sx={{ mt: 2 }}>
-          <Typography color="white">Discount Rate (r): {discountRate}%</Typography>
-          <Slider
-            value={discountRate}
-            min={5}
-            max={25}
-            step={0.5}
-            onChange={(e, newValue) => setDiscountRate(newValue)}
-            valueLabelDisplay="auto"
-            sx={{ color: 'primary.main' }}
-          />
-        </Box>
-        <Box sx={{ mt: 2 }}>
-          <Typography color="white">Time Horizon (T): {timeHorizon} years</Typography>
-          <Slider
-            value={timeHorizon}
+          <SliderWithValue
+            label="Time Horizon (Years)"
             min={1}
-            max={10}
+            max={20}
             step={1}
+            value={timeHorizon}
             onChange={(e, newValue) => setTimeHorizon(newValue)}
-            valueLabelDisplay="auto"
-            sx={{ color: 'primary.main' }}
+          />
+          <SliderWithValue
+            label="Target ROI for Fans (%)"
+            min={0}
+            max={100}
+            step={1}
+            value={targetROI}
+            onChange={(e, newValue) => setTargetROI(newValue)}
           />
         </Box>
-      </Box>
-  
-      {/* Token Supply & Pricing Optimization Module */}
-      <Box sx={{ mt: 4, p: 3, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Token Supply & Pricing Optimization
-        </Typography>
-        <TextField
-          label="Total Token Supply"
-          type="number"
-          value={supply}
-          onChange={(e) => setSupply(parseInt(e.target.value))}
-          fullWidth
-          margin="normal"
-        />
-        <TextField
-          label="Base Token Price ($)"
-          type="number"
-          value={basePrice}
-          onChange={(e) => setBasePrice(parseFloat(e.target.value))}
-          fullWidth
-          margin="normal"
-          helperText="Enter the base token price in dollars."
-        />
-        <Typography variant="body1" color="white" sx={{ mt: 2 }}>
-          Optimized Token Price ($): {optimizedPrice.toFixed(2)}
-        </Typography>
-        <Typography variant="body1" color="white">
-          Total Funds Raised Projection ($): {totalFundsRaised.toFixed(2)}
-        </Typography>
-        <Box sx={{ mt: 2 }}>
-          <Line
-            data={supplyPricingData}
-            options={{
-              responsive: true,
-              plugins: {
-                legend: { position: 'bottom' },
-                title: { display: true, text: 'Projected Funds Raised under Different Market Scenarios' }
-              }
-            }}
+
+        {/* Discount Rate Calculator */}
+        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
+          <Typography variant="h6" color="white">Discount Rate Calculator</Typography>
+          <SliderWithValue
+            label="Risk-Free Rate (%)"
+            min={0}
+            max={10}
+            step={0.1}
+            value={riskFreeRate}
+            onChange={(e, newValue) => setRiskFreeRate(newValue)}
           />
-        </Box>
-      </Box>
-  
-      {/* Break‑even Analysis Module */}
-      <Box sx={{ mt: 4, p: 3, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Break-even Analysis
-        </Typography>
-        <Typography variant="body2" color="white" sx={{ mb: 1 }}>
-          Enter the upfront offer and annual revenue figures to compute the break‑even point.
-        </Typography>
-        <TextField
-          label="Upfront Offer ($)"
-          type="number"
-          value={upfrontOffer}
-          onChange={(e) => setUpfrontOffer(parseFloat(e.target.value))}
-          fullWidth
-          margin="normal"
-        />
-        <TextField
-          label="Influencer Revenue Share (%)"
-          type="number"
-          value={influencerRevenueShare}
-          onChange={(e) => setInfluencerRevenueShare(parseFloat(e.target.value))}
-          fullWidth
-          margin="normal"
-        />
-        <TextField
-          label="Annual Influencer Revenue ($)"
-          type="number"
-          value={annualInfluencerRevenue}
-          onChange={(e) => setAnnualInfluencerRevenue(parseFloat(e.target.value))}
-          fullWidth
-          margin="normal"
-        />
-        <TextField
-          label="Admin Revenue Share (%)"
-          type="number"
-          value={adminRevenueShare}
-          onChange={(e) => setAdminRevenueShare(parseFloat(e.target.value))}
-          fullWidth
-          margin="normal"
-        />
-        <TextField
-          label="Annual Admin Revenue ($)"
-          type="number"
-          value={annualAdminRevenue}
-          onChange={(e) => setAnnualAdminRevenue(parseFloat(e.target.value))}
-          fullWidth
-          margin="normal"
-        />
-        <Button variant="contained" color="primary" onClick={computeBreakEven} sx={{ mt: 2 }}>
-          Compute Break-even
-        </Button>
-        {(breakEvenInfluencer !== null || breakEvenAdmin !== null) && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body1" color="white">
-              Influencer Break-even (years): {breakEvenInfluencer ? breakEvenInfluencer.toFixed(2) : 'N/A'}
-            </Typography>
-            <Typography variant="body1" color="white">
-              Admin Break-even (years): {breakEvenAdmin ? breakEvenAdmin.toFixed(2) : 'N/A'}
-            </Typography>
-            <Typography variant="body1" color="white">
-              Break-even Tokens (for influencer): {breakEvenTokens ? breakEvenTokens.toFixed(0) : 'N/A'}
-            </Typography>
-          </Box>
-        )}
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="body1" color="white">
-            Cumulative Cash Flow Projection
+          <SliderWithValue
+            label="Equity Risk Premium (%)"
+            min={0}
+            max={20}
+            step={0.1}
+            value={equityRiskPremium}
+            onChange={(e, newValue) => setEquityRiskPremium(newValue)}
+          />
+          <SliderWithValue
+            label="Industry Premium (%)"
+            min={0}
+            max={10}
+            step={0.1}
+            value={industryPremium}
+            onChange={(e, newValue) => setIndustryPremium(newValue)}
+          />
+          <Typography variant="body2" color="white" sx={{ mt: 1 }}>
+            Optimized Discount Rate: {optimizedDiscountRate.toFixed(2)}%
           </Typography>
-          <Line
-            data={{
-              labels: Array.from({ length: timeHorizon }, (_, i) => `Year ${i + 1}`),
-              datasets: [
-                {
-                  label: 'Cumulative Cash Flow ($)',
-                  data: Array.from({ length: timeHorizon }, (_, year) => {
-                    let cumulative = 0;
-                    const annualCF = totalFundsRaised * (influencerRevenueShare / 100);
-                    for (let t = 1; t <= year + 1; t++) {
-                      cumulative += annualCF / Math.pow(1 + discountRate / 100, t);
-                    }
-                    return cumulative;
-                  }),
-                  borderColor: 'cyan',
-                  fill: false,
-                  tension: 0.3
-                }
-              ]
-            }}
-            options={{
-              responsive: true,
-              plugins: {
-                legend: { position: 'bottom' },
-                title: { display: true, text: 'Cumulative Discounted Cash Flow' }
-              },
-              scales: {
-                x: { title: { display: true, text: 'Time (Years)' } },
-                y: { title: { display: true, text: 'Cumulative Cash Flow ($)' } }
-              }
-            }}
-          />
         </Box>
       </Box>
-  
-      {/* Sensitivity Analysis Module */}
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Sensitivity Analysis
-        </Typography>
-        <Typography variant="body2" color="white" sx={{ mt: 1 }}>
-          Adjust the parameters below to see their impact on NPV.
-        </Typography>
-        <Slider
-          value={sensitivityParam}
-          min={0}
-          max={20}
-          step={1}
-          onChange={(e, newValue) => setSensitivityParam(newValue)}
-          valueLabelDisplay="auto"
-          sx={{ color: 'primary.main', mt: 2 }}
-        />
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="body1" color="white">
-            NPV Sensitivity:
+
+      {/* Second Row: Liquidity & Royalty Inputs & Optimized Recommendations */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 4 }}>
+        {/* Liquidity & Royalty Inputs */}
+        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
+          <Typography variant="h6" color="white">Liquidity & Royalty Inputs</Typography>
+          <SliderWithValue
+            label="Liquidity Preference"
+            min={0}
+            max={100}
+            step={1}
+            value={liquidityPreference}
+            onChange={(e, newValue) => setLiquidityPreference(newValue)}
+          />
+          <SliderWithValue
+            label="Base Creator Royalty (%)"
+            min={0}
+            max={50}
+            step={0.5}
+            value={creatorRoyalty}
+            onChange={(e, newValue) => setCreatorRoyalty(newValue)}
+          />
+        </Box>
+
+        {/* Optimized Recommendations */}
+        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
+          <Typography variant="h6" color="white">Optimized Recommendations</Typography>
+          <Typography variant="body2" color="white">
+            Present Value of Revenue (over {timeHorizon} years at {optimizedDiscountRate.toFixed(2)}%):
+            ${presentValueRevenue.toFixed(2)}
           </Typography>
-          <Bar
-            data={tornadoData}
-            options={{
-              responsive: true,
-              plugins: {
-                legend: { position: 'bottom' },
-                title: { display: true, text: 'Tornado Diagram: Impact on NPV' }
-              },
-              scales: {
-                x: { title: { display: true, text: 'Parameters' } },
-                y: { title: { display: true, text: 'NPV Change ($)' } }
-              }
-            }}
-          />
+          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
+            Recommended Token Supply: {Math.round(recommendedSupply).toLocaleString()} tokens
+          </Typography>
+          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
+            Recommended Token Price: ${recommendedTokenPrice.toFixed(2)} per token
+          </Typography>
+          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
+            Implied Fan ROI: {impliedFanROI.toFixed(2)}%
+          </Typography>
+          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
+            Recommended Creator Royalty: {optimizedCreatorRoyalty.toFixed(2)}%
+          </Typography>
         </Box>
       </Box>
-  
-      {/* Monte Carlo Simulation Module */}
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Monte Carlo Simulation
-        </Typography>
-        <Typography variant="body2" color="white" sx={{ mt: 1 }}>
-          Run the simulation to obtain a probability distribution of NPV outcomes.
-        </Typography>
-        <Button variant="contained" color="primary" onClick={runMonteCarlo} sx={{ mt: 2 }}>
-          Run Monte Carlo Simulation
-        </Button>
-        {monteCarloResult && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body1" color="white">
-              Monte Carlo Simulation Histogram:
-            </Typography>
-            <Bar
-              data={monteCarloChartData}
-              options={{
-                responsive: true,
-                plugins: {
-                  legend: { position: 'bottom' },
-                  title: { display: true, text: 'NPV Distribution from Monte Carlo Simulation' }
-                },
-                scales: {
-                  x: { title: { display: true, text: 'Bins' } },
-                  y: { title: { display: true, text: 'Frequency' } }
-                }
-              }}
-            />
-            {simulationStats && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="white">
-                  Mean NPV: ${simulationStats.mean.toFixed(2)} | Median: ${simulationStats.median.toFixed(2)} | Variance: {simulationStats.variance.toFixed(2)}
-                </Typography>
-                <Typography variant="body2" color="white" sx={{ mt: 1 }}>
-                  Recommendation: 70% of outcomes fall between ${simulationStats.median - 5000} and ${simulationStats.median + 5000}. Consider adjusting your discount rate if volatility increases.
-                </Typography>
-              </Box>
+
+      {/* Third Section: Advanced Visualizations (4 Quadrants) */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 4 }}>
+        {/* Quadrant 1: Plot Density (Contour Plot) with Legend inside the same Box */}
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: { xs: '100%', md: '48%' },
+            p: 2,
+            bgcolor: 'black',
+            borderRadius: 2,
+            height: 350,
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          <Typography variant="h6" color="white" sx={{ mb: 1, textAlign: 'center' }}>
+            Plot Density
+          </Typography>
+          <Box sx={{ flex: 1, width: '100%' }}>
+            {mounted && (
+              <Scatter data={densityData} options={{ ...densityOptions, maintainAspectRatio: false }} />
             )}
           </Box>
-        )}
+          <Box sx={{ mt: 1, textAlign: 'center' }}>
+            {densityLegend}
+          </Box>
+        </Box>
+
+        {/* Quadrant 2: Parallel Coordinates Plot */}
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: { xs: '100%', md: '48%' },
+            p: 2,
+            bgcolor: 'black',
+            borderRadius: 2,
+            height: 350,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Typography variant="h6" color="white" sx={{ mb: 1 }}>
+            Parallel Coordinates Plot
+          </Typography>
+          {mounted && <Line data={parallelData} options={parallelOptions} />}
+        </Box>
+
+        {/* Quadrant 3: Multi-Line Sensitivity Chart */}
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: { xs: '100%', md: '48%' },
+            p: 2,
+            bgcolor: 'black',
+            borderRadius: 2,
+            height: 350,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Typography variant="h6" color="white" sx={{ mb: 1 }}>
+            Multi-Line Sensitivity Chart
+          </Typography>
+          {mounted && (
+            <Line data={sensitivityData} options={sensitivityOptions} />
+          )}
+        </Box>
+
+        {/* Quadrant 4: Price Discovery Chart */}
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: { xs: '100%', md: '48%' },
+            p: 2,
+            bgcolor: 'black',
+            borderRadius: 2,
+            height: 350,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Typography variant="h6" color="white" sx={{ mb: 1 }}>
+            Price Discovery Chart
+          </Typography>
+          {mounted && (
+            <Line data={priceDiscoveryData} options={priceDiscoveryOptions} />
+          )}
+        </Box>
       </Box>
-  
-      {/* Performance Metrics Dashboard & Reporting Section */}
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Performance Metrics Dashboard
-        </Typography>
-        <Typography variant="body1" color="white">
-          ROI Projections, Liquidity Analysis, Creator Royalty Forecasts, etc.
-        </Typography>
-      </Box>
-      <Box sx={{ mt: 4, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-        <Typography variant="h6" color="white">
-          Reporting
-        </Typography>
-        <Button variant="outlined" color="primary">
-          Download Report (PDF/CSV)
+
+      {/* Advanced Options Toggle */}
+      <Box sx={{ mt: 4 }}>
+        <Button variant="outlined" color="primary" onClick={() => setShowAdvanced(!showAdvanced)}>
+          {showAdvanced ? 'Hide Advanced Analysis' : 'Show Advanced Analysis'}
         </Button>
       </Box>
+      {showAdvanced && advancedContent}
     </Container>
   );
 }
