@@ -8,58 +8,37 @@ import {
   Button,
   Typography,
   Box,
-  Slider,
   TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress,
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Grid,
+  Slider,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { firestore } from '../firebase';
 import { buyTokens } from '../blockchain';
-import { Bar } from 'react-chartjs-2';
 
 function LandingPage() {
   const { tokenId } = useParams();
   const [tokenData, setTokenData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Purchase flow state
   const [purchaseQuantity, setPurchaseQuantity] = useState(1);
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [orderSummary, setOrderSummary] = useState(null);
 
-  // Dummy data for social proof, sale history, testimonials, FAQs
-  const [socialMetrics] = useState({
-    followers: 10000,
-    engagementRate: 5,
-    collaborations: 3,
-  });
-  // Weekly sale history (used for sample tokens only)
-  const [saleHistory] = useState([
-    { date: 'Week 1', sold: 100 },
-    { date: 'Week 2', sold: 200 },
-    { date: 'Week 3', sold: 300 },
-    { date: 'Week 4', sold: 400 },
-  ]);
-  const [testimonials] = useState([
-    { id: 1, author: 'Fan1', comment: 'Great token offering!' },
-    { id: 2, author: 'Fan2', comment: 'I love supporting my favorite creator.' },
-  ]);
-  const [faqs] = useState([
-    { question: 'What is the revenue share?', answer: 'Token holders receive a percentage of future revenue.' },
-    { question: 'How do I purchase tokens?', answer: 'Use the slider or input field to select quantity and click Buy Token.' },
-  ]);
-  const [faqOpen, setFaqOpen] = useState(false);
+  // State for tier benefits and event schedules
+  const [tierBenefits, setTierBenefits] = useState([]);
+  const [eventSchedules, setEventSchedules] = useState([]);
+  // Dividend info state (not rendered on this page)
+  const [dividendInfo, setDividendInfo] = useState({ claimable: 0, history: [] });
 
   const baseUrl = process.env.REACT_APP_BASE_URL || 'http://localhost:3000';
 
-  // Fetch token data from Firestore or use dummy sample data if tokenId === 'sample'
   useEffect(() => {
     if (tokenId === 'sample') {
       setTokenData({
@@ -68,12 +47,23 @@ function LandingPage() {
         tokenPrice: 500000,
         revenueShare: 10,
         totalSupply: 1000000,
-        sold: 250000, // tokens sold (for progress)
+        sold: 250000,
         imageUrl: "https://via.placeholder.com/800x300?text=Sample+Banner+Image",
         landingPage: `${baseUrl}/landing/sample`,
-        legalDisclaimer: "This is a sample legal disclaimer. Please review all risk warnings and terms before purchase.",
-        createdAt: new Date(), // ensure createdAt is set
+        legalDisclaimer: "This is a sample legal disclaimer.",
+        createdAt: new Date(),
       });
+      // Dummy data for tiers, events, dividends
+      setTierBenefits([
+        { tier: 'Bronze', benefits: 'Access to behind‑the‑scenes content', threshold: 100 },
+        { tier: 'Silver', benefits: 'Exclusive video content', threshold: 1000 },
+        { tier: 'Gold', benefits: 'Live Q&A sessions', threshold: 5000 },
+        { tier: 'VIP', benefits: 'One‑on‑one meet & greet', threshold: 10000 },
+      ]);
+      setEventSchedules([
+        { title: 'Live Stream Event', date: '2025-04-10T20:00:00', description: 'Join the creator live for a special event.' },
+      ]);
+      setDividendInfo({ claimable: 150, history: [{ date: '2025-03-01', amount: 100 }, { date: '2025-03-15', amount: 50 }] });
       setLoading(false);
     } else {
       const fetchToken = async () => {
@@ -81,6 +71,10 @@ function LandingPage() {
           const tokenDoc = await firestore.collection('tokens').doc(tokenId).get();
           if (tokenDoc.exists) {
             setTokenData(tokenDoc.data());
+            if (tokenDoc.data().utilityConfig) {
+              setTierBenefits(tokenDoc.data().utilityConfig.tiers || []);
+              // Add similar fetch for events and dividend info if available
+            }
           }
         } catch (error) {
           console.error('Error fetching token data:', error);
@@ -91,13 +85,12 @@ function LandingPage() {
     }
   }, [tokenId, baseUrl]);
 
-  // Calculate token sale progress (as percentage)
+  // Calculate sale progress and created-at display
   const saleProgress =
     tokenData && tokenData.totalSupply
       ? ((tokenData.sold || 0) / tokenData.totalSupply) * 100
       : 0;
 
-  // Safe handling for createdAt field
   const createdAtDisplay =
     tokenData && tokenData.createdAt
       ? tokenData.createdAt.seconds
@@ -105,7 +98,12 @@ function LandingPage() {
         : new Date(tokenData.createdAt).toLocaleString()
       : 'N/A';
 
-  // Handle Buy Token: Calculate order summary and open modal
+  // Calculate available tokens
+  const availableTokens =
+    tokenData && tokenData.totalSupply
+      ? tokenData.totalSupply - (tokenData.sold || 0)
+      : 0;
+
   const handleBuyToken = () => {
     if (!tokenData) return;
     const price = tokenData.tokenPrice || 0;
@@ -114,8 +112,8 @@ function LandingPage() {
     const summary = {
       quantity: purchaseQuantity,
       unitPrice: price,
-      totalCost: totalCost,
-      fee: fee,
+      totalCost,
+      fee,
       finalAmount: totalCost + fee,
       revenueShare: tokenData.revenueShare,
     };
@@ -123,27 +121,14 @@ function LandingPage() {
     setPurchaseModalOpen(true);
   };
 
-  // Handle Confirm Purchase: Update the smart contract
   const handleConfirmPurchase = async () => {
     try {
       await buyTokens(tokenData.contractAddress, purchaseQuantity);
-      alert(`Purchased ${purchaseQuantity} tokens for $${orderSummary.finalAmount.toFixed(2)}.`);
+      alert(`Purchased ${purchaseQuantity} tokens for $${orderSummary.finalAmount.toLocaleString()}.`);
     } catch (error) {
       alert(error.message);
     }
     setPurchaseModalOpen(false);
-  };
-
-  // Prepare Token Sale Performance Chart data using weekly saleHistory
-  const salePerformanceData = {
-    labels: saleHistory.map(item => item.date),
-    datasets: [
-      {
-        label: 'Tokens Sold',
-        data: saleHistory.map(item => item.sold),
-        backgroundColor: '#00aeff',
-      },
-    ],
   };
 
   if (loading) {
@@ -167,7 +152,12 @@ function LandingPage() {
       {/* Banner Section */}
       <Card sx={{ mb: 3 }}>
         {tokenData.imageUrl ? (
-          <CardMedia component="img" height="300" image={tokenData.imageUrl} alt="Creator Banner" />
+          <CardMedia
+            component="img"
+            height="300"
+            image={tokenData.imageUrl}
+            alt="Creator Banner"
+          />
         ) : (
           <Box
             sx={{
@@ -191,139 +181,103 @@ function LandingPage() {
           {tokenData.name || tokenData.tokenName} - {tokenData.symbol || tokenData.tokenSymbol}
         </Typography>
         <Typography variant="subtitle1" color="black">
-          Current Price: ${tokenData.tokenPrice ? parseFloat(tokenData.tokenPrice).toLocaleString() : 'N/A'}
+          Price: ${tokenData.tokenPrice ? parseFloat(tokenData.tokenPrice).toLocaleString() : 'N/A'}
         </Typography>
         <Typography variant="subtitle1" color="black">
           Revenue Share: {tokenData.revenueShare}%
         </Typography>
         <Typography variant="subtitle1" color="black">
-          Total Supply: {tokenData.totalSupply ? parseFloat(tokenData.totalSupply).toLocaleString() : 'N/A'}
+          Revenue Share Per Token:{" "}
+          {tokenData.totalSupply ? ((tokenData.revenueShare / tokenData.totalSupply) * 100).toFixed(3) : 'N/A'}%
         </Typography>
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="subtitle1" color="black">
-            Token Sale Progress: {Math.round(saleProgress)}%
-          </Typography>
-          <LinearProgress variant="determinate" value={saleProgress} sx={{ height: 10, borderRadius: 5 }} />
-        </Box>
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="subtitle1" color="black">
-            Performance Metrics:
-          </Typography>
-          <Typography variant="body2" color="black">
-            ROI: N/A, Trading Volume: N/A, Avg Sale Price: N/A
-          </Typography>
-        </Box>
         <Typography variant="body1" color="black" sx={{ mt: 2 }}>
           <strong>Created At:</strong> {createdAtDisplay}
         </Typography>
       </Box>
 
-      {/* Purchase Flow Integration */}
-      <Box sx={{ mb: 4, p: 2, border: '1px solid #ccc', borderRadius: 2 }}>
+      {/* Membership Benefits Panel */}
+      <Box sx={{ mb: 4, p: 2, bgcolor: 'grey.100', borderRadius: 2 }}>
         <Typography variant="h5" color="black" gutterBottom>
-          Purchase Tokens
+          Membership Benefits
         </Typography>
-        {/* Quantity Selection: Slider and Manual Input */}
-        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="subtitle1" color="black">
-            Select Quantity:
-          </Typography>
-          <Slider
-            value={purchaseQuantity}
-            min={1}
-            max={1000}
-            step={1}
-            onChange={(e, newValue) => setPurchaseQuantity(newValue)}
-            valueLabelDisplay="auto"
-            sx={{ color: 'primary.main', flex: 1 }}
-          />
-          <TextField
-            type="number"
-            value={purchaseQuantity}
-            onChange={(e) => setPurchaseQuantity(Number(e.target.value))}
-            sx={{ width: 80, bgcolor: 'white', borderRadius: 1, input: { color: 'black' } }}
-          />
-        </Box>
-        <Box sx={{ mb: 2 }}>
-          <Button variant="contained" color="primary" onClick={handleBuyToken}>
-            Buy Token
-          </Button>
-        </Box>
-        {/* Terms & Conditions */}
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle1">Terms & Conditions</Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Typography variant="body2" color="black">
-              Please review the legal disclaimer and risk warnings before purchasing tokens. By proceeding, you agree to our terms including revenue share details and other conditions.
-            </Typography>
-          </AccordionDetails>
-        </Accordion>
-      </Box>
-
-      {/* Token Sale Performance Chart (Weekly) */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" color="black" gutterBottom>
-          Token Sale Performance (Weekly)
-        </Typography>
-        <Bar data={salePerformanceData} options={{ responsive: true }} />
-      </Box>
-
-      {/* Social Proof Metrics */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" color="black" gutterBottom>
-          Social Proof
-        </Typography>
-        <Typography variant="body1" color="black">
-          Followers: {socialMetrics.followers.toLocaleString()} | Engagement Rate: {socialMetrics.engagementRate}% | Collaborations: {socialMetrics.collaborations}
-        </Typography>
-      </Box>
-
-      {/* Testimonials / Fan Reviews */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" color="black" gutterBottom>
-          Testimonials
-        </Typography>
-        {testimonials.map((review) => (
-          <Box key={review.id} sx={{ mb: 1, p: 1, border: '1px solid #ccc', borderRadius: 1 }}>
-            <Typography variant="subtitle2" color="black">
-              {review.author}:
-            </Typography>
-            <Typography variant="body2" color="black">
-              {review.comment}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-
-      {/* FAQ / Help Section */}
-      <Box sx={{ mb: 4 }}>
-        <Accordion in={faqOpen} onChange={() => setFaqOpen(!faqOpen)}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h5" color="black">FAQ / Help</Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            {faqs.map((faq, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
-                <Typography variant="subtitle1" color="black">
-                  Q: {faq.question}
+        <Grid container spacing={2}>
+          {tierBenefits.map((tier, index) => (
+            <Grid item xs={12} md={6} key={index}>
+              <Box sx={{ p: 2, border: '1px solid #ccc', borderRadius: 2 }}>
+                <Typography variant="h6" sx={{ color: '#333' }}>
+                  {tier.tier}
                 </Typography>
-                <Typography variant="body2" color="black">
-                  A: {faq.answer}
+                <Typography variant="body2" sx={{ color: '#333' }}>
+                  Threshold: {tier.threshold.toLocaleString()} tokens
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#333' }}>
+                  Benefits: {tier.benefits}
                 </Typography>
               </Box>
-            ))}
-          </AccordionDetails>
-        </Accordion>
+            </Grid>
+          ))}
+        </Grid>
       </Box>
 
-      {/* Live Chat / Support Link */}
-      <Box sx={{ mb: 4 }}>
-        <Button variant="outlined" color="primary" onClick={() => window.open('mailto:support@yourplatform.com')}>
-          Contact Support
-        </Button>
-      </Box>
+      {/* Purchase Tokens Panel */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6}>
+          <Box sx={{ p: 2, border: '1px solid #ccc', borderRadius: 2 }}>
+            <Typography variant="h5" color="black" gutterBottom>
+              Purchase Tokens
+            </Typography>
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="subtitle1" color="black">
+                Available Tokens: {availableTokens.toLocaleString()}
+              </Typography>
+              <Typography variant="subtitle1" color="black">
+                Unit Price: ${tokenData.tokenPrice ? parseFloat(tokenData.tokenPrice).toLocaleString() : 'N/A'}
+              </Typography>
+            </Box>
+            <Grid container alignItems="center" spacing={1} sx={{ mb: 2 }}>
+              <Grid item xs={9}>
+                <Slider
+                  value={purchaseQuantity}
+                  onChange={(e, newValue) => setPurchaseQuantity(newValue)}
+                  min={1}
+                  max={availableTokens}
+                  valueLabelDisplay="auto"
+                  sx={{ color: 'primary.main' }}
+                />
+              </Grid>
+              <Grid item xs={3}>
+                <TextField
+                  type="text"
+                  value={purchaseQuantity.toLocaleString()}
+                  onChange={(e) => {
+                    const numericValue = Number(e.target.value.replace(/,/g, ''));
+                    setPurchaseQuantity(numericValue);
+                  }}
+                  fullWidth
+                  sx={{
+                    border: '1px solid lightgrey',
+                    borderRadius: 1,
+                    input: { color: 'black' },
+                  }}
+                />
+              </Grid>
+            </Grid>
+            {/* Moved Percent Revenue Share Acquired below the slider */}
+            <Typography variant="subtitle1" color="black" sx={{ mb: 1 }}>
+              Percent Revenue Share Acquired: {tokenData.totalSupply ? ((purchaseQuantity / tokenData.totalSupply) * tokenData.revenueShare).toFixed(3) : 'N/A'}%
+            </Typography>
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="subtitle1" color="black">
+                Total Price: $
+                {tokenData.tokenPrice ? (purchaseQuantity * tokenData.tokenPrice).toLocaleString() : 'N/A'}
+              </Typography>
+            </Box>
+            <Button variant="contained" color="primary" onClick={handleBuyToken}>
+              Buy Token
+            </Button>
+          </Box>
+        </Grid>
+      </Grid>
 
       {/* Purchase Summary Modal */}
       <Dialog open={purchaseModalOpen} onClose={() => setPurchaseModalOpen(false)}>
@@ -338,13 +292,13 @@ function LandingPage() {
                 Unit Price: ${orderSummary.unitPrice ? orderSummary.unitPrice.toLocaleString() : 'N/A'}
               </Typography>
               <Typography variant="subtitle1" color="black">
-                Total Cost: ${orderSummary.unitPrice ? (purchaseQuantity * orderSummary.unitPrice).toLocaleString() : 'N/A'}
+                Total Cost: ${orderSummary.totalCost ? orderSummary.totalCost.toLocaleString() : 'N/A'}
               </Typography>
               <Typography variant="subtitle1" color="black">
-                Fees (2%): ${orderSummary.unitPrice ? (purchaseQuantity * orderSummary.unitPrice * 0.02).toLocaleString() : 'N/A'}
+                Fees (2%): ${orderSummary.fee ? orderSummary.fee.toLocaleString() : 'N/A'}
               </Typography>
               <Typography variant="subtitle1" color="black">
-                Final Amount: ${orderSummary.unitPrice ? (purchaseQuantity * orderSummary.unitPrice * 1.02).toLocaleString() : 'N/A'}
+                Final Amount: ${orderSummary.finalAmount ? orderSummary.finalAmount.toLocaleString() : 'N/A'}
               </Typography>
               <Typography variant="subtitle1" color="black">
                 Revenue Share: {orderSummary.revenueShare}%

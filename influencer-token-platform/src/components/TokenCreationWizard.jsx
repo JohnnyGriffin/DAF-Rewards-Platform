@@ -10,6 +10,7 @@ import {
   TextField,
   FormControlLabel,
   Checkbox,
+  Switch,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -40,6 +41,8 @@ function TokenCreationWizard() {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
 
+  // Removed "jurisdiction" from the UI, but still in tokenInfo if needed in the backend.
+  // Added allowSecondaryMarket property to hide platformFee/royalty unless toggled on.
   const [tokenInfo, setTokenInfo] = useState({
     influencerId: '',
     tokenName: '',
@@ -47,7 +50,7 @@ function TokenCreationWizard() {
     decimals: 18,
     totalSupply: '',
     revenueShare: '',
-    distributionFrequency: '',
+    distributionFrequency: '', // now in days
     minPayout: '',
     vestingPeriod: '',
     tokenPrice: '',
@@ -58,7 +61,8 @@ function TokenCreationWizard() {
     emergencyPause: false,
     legalDisclaimer: 'Standard legal disclaimer here.',
     termsUrl: '',
-    jurisdiction: '',
+    // jurisdiction: '', <-- removed from the UI
+    allowSecondaryMarket: false, // New toggle
   });
   const [previewData, setPreviewData] = useState(null);
 
@@ -125,13 +129,20 @@ function TokenCreationWizard() {
   };
 
   const handleChange = (field) => (e) => {
-    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    // Handle toggles (checkbox/switch) vs textfields
+    let value;
+    if (e.target.type === 'checkbox' || e.target.type === 'switch') {
+      value = e.target.checked;
+    } else {
+      value = e.target.value;
+    }
     setTokenInfo((prev) => ({ ...prev, [field]: value }));
   };
 
   const getStepContent = (step) => {
     switch (step) {
       case 0:
+        // Basic Token Info
         return (
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle1" color="white">
@@ -222,6 +233,7 @@ function TokenCreationWizard() {
           </Box>
         );
       case 1:
+        // Revenue Sharing
         return (
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle1" color="white">
@@ -240,11 +252,12 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
+            {/* Updated: Distribution Frequency is in days now, not seconds */}
             <Typography variant="subtitle1" color="white">
-              Distribution Frequency (seconds)
+              Distribution Frequency (days)
             </Typography>
             <TextField
-              placeholder="Enter distribution frequency"
+              placeholder="Enter distribution frequency in days"
               type="number"
               fullWidth
               margin="normal"
@@ -290,6 +303,7 @@ function TokenCreationWizard() {
           </Box>
         );
       case 2:
+        // Tokenomics & Sale
         return (
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle1" color="white">
@@ -308,37 +322,55 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            <Typography variant="subtitle1" color="white">
-              Platform Fee (%)
-            </Typography>
-            <TextField
-              placeholder="Enter platform fee percentage"
-              type="number"
-              fullWidth
-              margin="normal"
-              value={tokenInfo.platformFee}
-              onChange={handleChange('platformFee')}
-              variant="outlined"
-              InputLabelProps={{ shrink: true, style: { color: 'black' } }}
-              InputProps={{ style: { color: 'black' } }}
-              sx={{ bgcolor: 'white', borderRadius: 1 }}
+            {/* Secondary Market Toggle */}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={tokenInfo.allowSecondaryMarket}
+                  onChange={handleChange('allowSecondaryMarket')}
+                  color="primary"
+                />
+              }
+              label="Allow Secondary Market Trading"
+              sx={{ color: 'white', mt: 1 }}
             />
 
-            <Typography variant="subtitle1" color="white">
-              Creator Royalty (%)
-            </Typography>
-            <TextField
-              placeholder="Enter creator royalty percentage"
-              type="number"
-              fullWidth
-              margin="normal"
-              value={tokenInfo.influencerRoyalty}
-              onChange={handleChange('influencerRoyalty')}
-              variant="outlined"
-              InputLabelProps={{ shrink: true, style: { color: 'black' } }}
-              InputProps={{ style: { color: 'black' } }}
-              sx={{ bgcolor: 'white', borderRadius: 1 }}
-            />
+            {/* Show Platform Fee & Creator Royalty only if allowSecondaryMarket is on */}
+            {tokenInfo.allowSecondaryMarket && (
+              <>
+                <Typography variant="subtitle1" color="white" sx={{ mt: 2 }}>
+                  Platform Fee (%)
+                </Typography>
+                <TextField
+                  placeholder="Enter platform fee percentage"
+                  type="number"
+                  fullWidth
+                  margin="normal"
+                  value={tokenInfo.platformFee}
+                  onChange={handleChange('platformFee')}
+                  variant="outlined"
+                  InputLabelProps={{ shrink: true, style: { color: 'black' } }}
+                  InputProps={{ style: { color: 'black' } }}
+                  sx={{ bgcolor: 'white', borderRadius: 1 }}
+                />
+
+                <Typography variant="subtitle1" color="white">
+                  Creator Royalty (%)
+                </Typography>
+                <TextField
+                  placeholder="Enter creator royalty percentage"
+                  type="number"
+                  fullWidth
+                  margin="normal"
+                  value={tokenInfo.influencerRoyalty}
+                  onChange={handleChange('influencerRoyalty')}
+                  variant="outlined"
+                  InputLabelProps={{ shrink: true, style: { color: 'black' } }}
+                  InputProps={{ style: { color: 'black' } }}
+                  sx={{ bgcolor: 'white', borderRadius: 1 }}
+                />
+              </>
+            )}
 
             <FormControlLabel
               control={
@@ -353,6 +385,7 @@ function TokenCreationWizard() {
           </Box>
         );
       case 3:
+        // Governance & Legal
         return (
           <Box sx={{ mt: 2 }}>
             <FormControlLabel
@@ -408,23 +441,11 @@ function TokenCreationWizard() {
               sx={{ bgcolor: 'white', borderRadius: 1 }}
             />
 
-            <Typography variant="subtitle1" color="white">
-              Jurisdiction
-            </Typography>
-            <TextField
-              placeholder="Enter jurisdiction"
-              fullWidth
-              margin="normal"
-              value={tokenInfo.jurisdiction}
-              onChange={handleChange('jurisdiction')}
-              variant="outlined"
-              InputLabelProps={{ shrink: true, style: { color: 'black' } }}
-              InputProps={{ style: { color: 'black' } }}
-              sx={{ bgcolor: 'white', borderRadius: 1 }}
-            />
+            {/* Removed Jurisdiction field */}
           </Box>
         );
       case 4:
+        // Preview & Deploy
         return (
           <Box sx={{ mt: 2 }}>
             <Typography variant="h6" color="white" gutterBottom>
@@ -450,9 +471,19 @@ function TokenCreationWizard() {
                 <Typography color="white">
                   <strong>Token Price:</strong> ${previewData.tokenPrice}
                 </Typography>
-                <Typography color="white">
-                  <strong>Platform Fee:</strong> {previewData.platformFee}%
-                </Typography>
+
+                {/* Show Platform Fee & Creator Royalty only if allowSecondaryMarket is on */}
+                {previewData.allowSecondaryMarket && (
+                  <>
+                    <Typography color="white">
+                      <strong>Platform Fee:</strong> {previewData.platformFee}%
+                    </Typography>
+                    <Typography color="white">
+                      <strong>Creator Royalty:</strong> {previewData.influencerRoyalty}%
+                    </Typography>
+                  </>
+                )}
+
                 <Typography color="white">
                   <strong>Governance:</strong>{' '}
                   {previewData.upgradeable ? 'Upgradeable' : 'Non-upgradeable'},{' '}
@@ -465,9 +496,6 @@ function TokenCreationWizard() {
                 </Typography>
                 <Typography color="white">
                   <strong>T&Cs URL:</strong> {previewData.termsUrl}
-                </Typography>
-                <Typography color="white">
-                  <strong>Jurisdiction:</strong> {previewData.jurisdiction}
                 </Typography>
                 <Typography color="white" sx={{ mt: 2 }}>
                   If everything looks correct, click "Deploy Token".

@@ -5,10 +5,9 @@ import { Routes, Route } from 'react-router-dom';
 import GlobalNav from './components/GlobalNav';
 import LoginSignUp from './components/LoginSignUp';
 import CreatorDashboard from './components/CreatorDashboard';
-// Import FanDashboard (make sure the file exists as FanDashboard.jsx)
 import FanDashboard from './components/FanDashboard';
 import AdminPortal from './components/AdminPortal';
-import EditLandingPage from './components/EditLandingPage';
+import CreatorLandingPageManager from './components/CreatorLandingPageManager'; // New unified component
 import LandingPage from './components/LandingPage';
 import OfferModelingTool from './components/OfferModelingTool';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -18,9 +17,7 @@ function App() {
     <>
       <GlobalNav />
       <Routes>
-        {/* Default route for Login/SignUp */}
         <Route path="/" element={<LoginSignUp />} />
-
         <Route
           path="/admin"
           element={
@@ -29,7 +26,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/creator"
           element={
@@ -38,8 +34,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* Corrected: use FanDashboard (not InvestorDashboard) */}
         <Route
           path="/fan"
           element={
@@ -48,7 +42,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/offer-tool"
           element={
@@ -57,17 +50,15 @@ function App() {
             </ProtectedRoute>
           }
         />
-
+        {/* Use the unified landing page manager here */}
         <Route
           path="/edit-landing/:tokenId"
           element={
             <ProtectedRoute>
-              <EditLandingPage />
+              <CreatorLandingPageManager />
             </ProtectedRoute>
           }
         />
-
-        {/* Public Landing Page for a given token */}
         <Route path="/landing/:tokenId" element={<LandingPage />} />
       </Routes>
     </>

@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { Container, Box, Tabs, Tab, TextField, Button, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { auth, firestore } from '../firebase';
-import KYC from './KYC';
+// Note: We no longer need to import KYC because creators skip it
+// import KYC from './KYC';
 
 function LoginSignUp() {
   const [tabValue, setTabValue] = useState(0);
@@ -17,7 +18,6 @@ function LoginSignUp() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [role, setRole] = useState('fan'); // default role is fan
-  const [showKYC, setShowKYC] = useState(false);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -51,56 +51,26 @@ function LoginSignUp() {
       const userCredential = await auth.createUserWithEmailAndPassword(signupEmail, signupPassword);
       const newUserId = userCredential.user.uid;
 
+      // For creators, we now set kycVerified to true and do not require KYC verification.
       await firestore.collection('users').doc(newUserId).set({
         email: signupEmail,
         role,
-        kycVerified: role === 'creator' ? false : true, // creators require KYC
+        kycVerified: true,  // Always true now for all roles (or you can leave as true for creator only)
       });
 
-      // If creator, prompt KYC
-      if (role === 'creator') {
-        setShowKYC(true);
-        return;
-      }
-
-      // Otherwise, navigate immediately
+      // Navigate immediately based on role
       if (role === 'admin') {
         navigate('/admin');
       } else if (role === 'fan') {
         navigate('/fan');
+      } else if (role === 'creator') {
+        navigate('/creator');
       }
     } catch (error) {
       console.error('Sign Up error:', error);
       alert(error.message);
     }
   };
-
-  if (showKYC) {
-    return (
-      <Container sx={{ mt: 5 }}>
-        <Typography variant="h4" color="white" align="center" gutterBottom>
-          Complete KYC Verification
-        </Typography>
-        <KYC
-          onComplete={async (kycData) => {
-            try {
-              if (auth.currentUser) {
-                await firestore.collection('users').doc(auth.currentUser.uid).update({
-                  kycVerified: true,
-                  kycData,
-                });
-              }
-              setShowKYC(false);
-              navigate('/creator');
-            } catch (err) {
-              console.error('KYC update error:', err);
-              alert(err.message);
-            }
-          }}
-        />
-      </Container>
-    );
-  }
 
   return (
     <Container sx={{ mt: 5 }}>

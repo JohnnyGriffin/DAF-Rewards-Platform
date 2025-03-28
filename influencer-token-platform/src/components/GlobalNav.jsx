@@ -15,8 +15,9 @@ function GlobalNav() {
   return (
     <AppBar position="static">
       <Toolbar>
+        {/* Header text updated */}
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          Iconocoin
+          Iconoco
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {/* Live/Test toggle */}
@@ -25,11 +26,9 @@ function GlobalNav() {
             label={liveMode ? 'Live Mode' : 'Test Mode'}
             sx={{ color: 'white' }}
           />
-          {/* Sample Landing Page link */}
           <Button color="inherit" component={Link} to="/landing/sample">
             Sample Landing Page
           </Button>
-          {/* Show Logout only if logged in; otherwise, show Login/Sign-Up */}
           {auth.currentUser ? (
             <Button color="inherit" onClick={handleLogout}>
               Logout

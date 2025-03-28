@@ -63,58 +63,17 @@ const ManageTokens = () => {
     token.tokenSymbol?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Dummy data for charts
-  const salesTrendData = {
-    labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'],
-    datasets: [
-      {
-        label: 'Token Sales Revenue ($)',
-        data: [500000, 600000, 550000, 700000, 650000, 720000, 680000],
-        fill: true,
-        backgroundColor: 'rgba(0, 174, 255, 0.3)',
-        borderColor: '#00aeff',
-      },
-    ],
-  };
-
-  const transactionVolumeData = {
-    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-    datasets: [
-      {
-        label: 'Transaction Volume',
-        data: [120, 150, 130, 170],
-        backgroundColor: '#ff4081',
-      },
-    ],
-  };
-
-  const revenueBreakdownData = {
-    labels: ['Initial Sales', 'Secondary Fees', 'Issuance Fees'],
-    datasets: [
-      {
-        data: [65, 25, 10],
-        backgroundColor: ['#00aeff', '#ff4081', '#4caf50'],
-      },
-    ],
-  };
-
-  // Handlers for refreshing logs/alerts
-  const refreshActivityLog = () => {
-    setActivityLog(prev => [...prev, { id: prev.length + 1, message: `New log at ${new Date().toLocaleTimeString()}`, timestamp: new Date().toLocaleString() }]);
-  };
-
-  const refreshAlerts = () => {
-    setAlerts(prev => [...prev, { id: prev.length + 1, message: `New alert at ${new Date().toLocaleTimeString()}` }]);
-  };
-
-  // Dummy export function (implement CSV/PDF export as needed)
-  const handleExportReport = () => {
-    alert("Exporting token performance report (dummy action).");
+  // Helper function for formatting createdAt date
+  const formatCreatedAt = (createdAt) => {
+    if (!createdAt) return 'N/A';
+    if (createdAt.seconds) {
+      return new Date(createdAt.seconds * 1000).toLocaleString();
+    }
+    return new Date(createdAt).toLocaleString();
   };
 
   return (
     <Container sx={{ mt: 4 }}>
-      {/* Overview Section */}
       <Typography variant="h4" gutterBottom color="white">
         Manage Tokens
       </Typography>
@@ -171,7 +130,7 @@ const ManageTokens = () => {
             No alerts.
           </Typography>
         )}
-        <Button variant="outlined" size="small" onClick={refreshAlerts} sx={{ mt: 1 }}>
+        <Button variant="outlined" size="small" onClick={() => alert("Refreshing alerts (dummy action).")} sx={{ mt: 1 }}>
           Refresh Alerts
         </Button>
       </Box>
@@ -207,33 +166,42 @@ const ManageTokens = () => {
                 </Box>
               </AccordionSummary>
               <AccordionDetails>
-                <Typography color="white" variant="body2">
-                  <strong>Tokenomics:</strong> Total Supply: {token.totalSupply}, Revenue Share: {token.revenueShare}%,
-                  Vesting Period: {token.vestingPeriod} days.
-                </Typography>
-                <Typography color="white" variant="body2">
-                  <strong>Financial Metrics:</strong> (Revenue, ROI, Trading Volume, Avg Sale Price – data pending)
-                </Typography>
-                <Typography color="white" variant="body2">
-                  <strong>Smart Contract:</strong> {token.contractAddress} (<Button variant="outlined" size="small" onClick={() => window.open(`https://sepolia.etherscan.io/address/${token.contractAddress}`, '_blank')}>View on Explorer</Button>)
-                </Typography>
-                <Typography color="white" variant="body2">
-                  <strong>Created At:</strong> {token.createdAt ? new Date(token.createdAt.seconds * 1000).toLocaleString() : 'N/A'}
-                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="white">
+                      <strong>Price:</strong> ${token.tokenPrice ? parseFloat(token.tokenPrice).toLocaleString() : 'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="white">
+                      <strong>Revenue Share:</strong> {token.revenueShare ? token.revenueShare + '%' : 'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="white">
+                      <strong>Rev Share/Token:</strong> {token.totalSupply ? ((token.revenueShare / token.totalSupply) * 100).toFixed(3) + '%' : 'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="white">
+                      <strong>Created At:</strong> {token.createdAt ? formatCreatedAt(token.createdAt) : 'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="white">
+                      <strong>% Sold:</strong> {token.totalSupply && token.sold ? ((token.sold / token.totalSupply) * 100).toFixed(2) + '%' : 'N/A'}
+                    </Typography>
+                  </Grid>
+                </Grid>
                 <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
                   <Button variant="contained" size="small" color="primary" onClick={() => alert("Edit token (modal or page)")}>
                     Edit Token
                   </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    color="error"
-                    onClick={() => {
-                      if (window.confirm("Are you sure you want to delete this token?")) {
-                        firestore.collection('tokens').doc(token.id).delete();
-                      }
-                    }}
-                  >
+                  <Button variant="outlined" size="small" color="error" onClick={() => {
+                    if (window.confirm("Are you sure you want to delete this token?")) {
+                      firestore.collection('tokens').doc(token.id).delete();
+                    }
+                  }}>
                     Delete Token
                   </Button>
                   <Button variant="contained" size="small" onClick={() => alert("View detailed performance (navigate)")}>
@@ -258,25 +226,61 @@ const ManageTokens = () => {
             <Typography variant="subtitle1" color="white">
               Token Sales Trend
             </Typography>
-            <Line data={salesTrendData} options={{ responsive: true, plugins: { legend: { position: 'bottom' } } }} />
+            <Line
+              data={{
+                labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'],
+                datasets: [
+                  {
+                    label: 'Token Sales Revenue ($)',
+                    data: [500000, 600000, 550000, 700000, 650000, 720000, 680000],
+                    fill: true,
+                    backgroundColor: 'rgba(0, 174, 255, 0.3)',
+                    borderColor: '#00aeff',
+                  },
+                ],
+              }}
+              options={{ responsive: true, plugins: { legend: { position: 'bottom' } } }}
+            />
           </Grid>
           <Grid item xs={12} md={6}>
             <Typography variant="subtitle1" color="white">
               Transaction Volume
             </Typography>
-            <Bar data={transactionVolumeData} options={{ responsive: true, plugins: { legend: { position: 'bottom' } } }} />
+            <Bar
+              data={{
+                labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                datasets: [
+                  {
+                    label: 'Transaction Volume',
+                    data: [120, 150, 130, 170],
+                    backgroundColor: '#ff4081',
+                  },
+                ],
+              }}
+              options={{ responsive: true, plugins: { legend: { position: 'bottom' } } }}
+            />
           </Grid>
           <Grid item xs={12} md={6}>
             <Typography variant="subtitle1" color="white">
               Revenue Breakdown
             </Typography>
-            <Doughnut data={revenueBreakdownData} options={{ responsive: true, plugins: { legend: { position: 'bottom' } } }} />
+            <Doughnut
+              data={{
+                labels: ['Initial Sales', 'Secondary Fees', 'Issuance Fees'],
+                datasets: [
+                  {
+                    data: [65, 25, 10],
+                    backgroundColor: ['#00aeff', '#ff4081', '#4caf50'],
+                  },
+                ],
+              }}
+              options={{ responsive: true, plugins: { legend: { position: 'bottom' } } }}
+            />
           </Grid>
           <Grid item xs={12} md={6}>
             <Typography variant="subtitle1" color="white">
               Performance Comparison
             </Typography>
-            {/* Placeholder for a scatter or bubble chart */}
             <Box sx={{ height: 200, bgcolor: 'grey.700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Typography color="white">[Scatter/Bubble Chart Placeholder]</Typography>
             </Box>
@@ -295,28 +299,6 @@ const ManageTokens = () => {
           Token Creation
         </Typography>
         <TokenCreationWizard />
-      </Box>
-
-      {/* Live Activity & Alerts Panel */}
-      <Box sx={{ mb: 4, p: 2, bgcolor: 'grey.800', borderRadius: 2 }}>
-        <Typography variant="h5" color="white" gutterBottom>
-          Smart Contract Activity Log
-        </Typography>
-        {activityLog.map(log => (
-          <Typography key={log.id} color="white" variant="body2">
-            [{log.timestamp}] {log.message}
-          </Typography>
-        ))}
-        <Button variant="outlined" size="small" onClick={refreshActivityLog} sx={{ mt: 1 }}>
-          Refresh Log
-        </Button>
-      </Box>
-
-      {/* Export & Reporting */}
-      <Box sx={{ mb: 4 }}>
-        <Button variant="outlined" color="primary" onClick={handleExportReport} sx={{ mr: 2 }}>
-          Export Report (CSV/PDF)
-        </Button>
       </Box>
     </Container>
   );

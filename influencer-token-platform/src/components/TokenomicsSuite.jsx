@@ -4,180 +4,122 @@ import {
   Container,
   Box,
   Typography,
+  Grid,
   Slider,
   Button,
-  Tooltip,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Tooltip,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { Scatter, Line } from 'react-chartjs-2';
+import { Line, Bar, Scatter } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
+  BarElement,
   RadialLinearScale,
   Tooltip as ChartTooltip,
-  Legend
+  Legend,
 } from 'chart.js';
 
-// Register Chart.js components
 ChartJS.register(
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
+  BarElement,
   RadialLinearScale,
   ChartTooltip,
   Legend
 );
 
-// Helper component: Slider with its current value displayed next to it
-const SliderWithValue = ({ label, value, ...sliderProps }) => (
+// Reusable slider with label and tooltip
+const SliderWithValue = ({ label, value, onChange, min, max, step, tooltip, disabled = false }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', my: 1 }}>
-    <Typography variant="caption" color="white" sx={{ minWidth: 150 }}>
-      {label}
-    </Typography>
-    <Slider {...sliderProps} value={value} />
-    <Typography variant="caption" color="white" sx={{ ml: 2, minWidth: 50 }}>
-      {value}
+    <Tooltip title={tooltip} arrow>
+      <Typography variant="caption" sx={{ minWidth: 150, color: 'white' }}>
+        {label}
+      </Typography>
+    </Tooltip>
+    <Slider
+      value={value}
+      onChange={(e, newValue) => onChange(newValue)}
+      min={min}
+      max={max}
+      step={step}
+      valueLabelDisplay="auto"
+      sx={{ flex: 1, color: 'primary.main' }}
+      disabled={disabled}
+    />
+    <Typography variant="caption" sx={{ ml: 2, minWidth: 80, color: 'white' }}>
+      {typeof value === 'number' ? value.toLocaleString() : value}
     </Typography>
   </Box>
 );
 
-function TokenomicsSuite() {
-  // =============================================================
-  // SECTION 1: CORE INPUTS
-  // =============================================================
-  const [projectedRevenue, setProjectedRevenue] = useState(1000000); // $1,000,000 annual revenue
-  const [timeHorizon, setTimeHorizon] = useState(5); // Years
-  const [targetROI, setTargetROI] = useState(20); // Target fan ROI (%)
+// Box–Muller transform for normally distributed random number
+function randn_bm() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
 
-  // =============================================================
-  // SECTION 2: DISCOUNT RATE CALCULATOR
-  // =============================================================
-  const [riskFreeRate, setRiskFreeRate] = useState(3); // %
-  const [equityRiskPremium, setEquityRiskPremium] = useState(5); // %
-  const [industryPremium, setIndustryPremium] = useState(2.5); // %
-  const optimizedDiscountRate = riskFreeRate + equityRiskPremium + industryPremium;
-
-  // =============================================================
-  // SECTION 3: LIQUIDITY & ROYALTY INPUTS
-  // =============================================================
-  const [liquidityPreference, setLiquidityPreference] = useState(50); // 0 = high liquidity, 100 = scarcity
-  const [creatorRoyalty, setCreatorRoyalty] = useState(10); // Base creator royalty (%)
-
-  // =============================================================
-  // SECTION 4: LEGACY SUPPLY INPUT
-  // =============================================================
-  const baseSupplyValue = 1000000; // Baseline token supply
-
-  // =============================================================
-  // DERIVED CALCULATIONS
-  // =============================================================
-  const presentValueRevenue =
-    projectedRevenue *
-    (1 - Math.pow(1 + optimizedDiscountRate / 100, -timeHorizon)) /
-    (optimizedDiscountRate / 100);
-
-  const recommendedSupply = baseSupplyValue * ((100 - liquidityPreference + 50) / 150);
-  const recommendedTokenPrice = presentValueRevenue / (recommendedSupply * (1 + targetROI / 100));
-  const impliedFanROI = ((presentValueRevenue / recommendedSupply) / recommendedTokenPrice - 1) * 100;
-  // For optimized values, force slight adjustments:
-  const optimizedTokenPrice = recommendedTokenPrice * 1.05;
-  const optimizedSupply = recommendedSupply * 0.95;
-  const optimizedFanROI = impliedFanROI * 0.9;
-  const optimizedCreatorRoyalty = creatorRoyalty * 1.1; // Use this as optimized creator royalty
-
-  // ------------------------------------------------------------
-  // COMMON SLIDER STYLE PROPS
-  // ------------------------------------------------------------
-  const commonSliderProps = {
-    sx: { mt: 1, color: 'primary.main' },
-    valueLabelDisplay: 'auto'
-  };
-
-  // =============================================================
-  // SECTION 5: ADVANCED VISUALIZATIONS
-  // =============================================================
-
-  // 1. Plot Density (Contour Plot / Density Heat Map)
-  const gridSize = 7;
-  const contourDataPoints = [];
-  for (let i = 0; i < gridSize; i++) {
-    for (let j = 0; j < gridSize; j++) {
-      const price = recommendedTokenPrice * (0.8 + 0.4 * (i / (gridSize - 1)));
-      const supplyVal = recommendedSupply * (0.8 + 0.4 * (j / (gridSize - 1)));
-      const roi = impliedFanROI * (0.9 + 0.2 * ((i + j) / (2 * (gridSize - 1))));
-      contourDataPoints.push({ x: price, y: supplyVal, roi });
+// Chart helper: Generate Density Data for the Plot Density Chart (with heatmap colors)
+const generateDensityData = (finalTokenPrice, recommendedSupply) => {
+  const points = [];
+  const epsilon = 0.001;
+  const priceMin = finalTokenPrice * 0.8;
+  const priceMax = finalTokenPrice * 1.2;
+  const supplyMin = recommendedSupply * 0.8;
+  const supplyMax = recommendedSupply * 1.2;
+  const numPoints = 10;
+  for (let i = 0; i < numPoints; i++) {
+    const price = priceMin + ((priceMax - priceMin) / (numPoints - 1)) * i;
+    for (let j = 0; j < numPoints; j++) {
+      const supply = supplyMin + ((supplyMax - supplyMin) / (numPoints - 1)) * j;
+      const normPriceDiff = (price - finalTokenPrice) / finalTokenPrice;
+      const normSupplyDiff = (supply - recommendedSupply) / recommendedSupply;
+      const distanceSq = normPriceDiff ** 2 + normSupplyDiff ** 2;
+      const density = 1 / (epsilon + distanceSq);
+      let color = '#0000FF'; // blue by default
+      if (density > 5) color = '#FF0000'; // red for high density
+      else if (density > 3) color = '#FFA500'; // orange for medium
+      points.push({ x: price, y: supply, r: Math.min(10, density * 0.5), color });
     }
   }
-  const contourRadii = contourDataPoints.map(pt => 4 + pt.roi / 50);
-  const contourColors = contourDataPoints.map(pt => {
-    const normalized = Math.min(1, Math.max(0, pt.roi / 100));
-    const green = Math.round(normalized * 255);
-    const red = 255 - green;
-    return `rgb(${red}, ${green}, 0)`;
-  });
-  const densityData = {
+  return {
     datasets: [
       {
-        label: 'Density Plot',
-        data: contourDataPoints,
-        pointRadius: contourRadii,
-        pointBackgroundColor: contourColors
-      }
-    ]
+        label: 'Optimal Density',
+        data: points,
+        pointBackgroundColor: (context) => context.raw.color,
+        pointRadius: (context) => context.raw.r,
+      },
+    ],
   };
-  const densityOptions = {
-    maintainAspectRatio: false,
-    scales: {
-      x: { title: { display: true, text: 'Token Price ($)' } },
-      y: { title: { display: true, text: 'Token Supply' } }
-    },
-    plugins: { legend: { display: false } },
-    responsive: true,
-    layout: { padding: 10 }
-  };
+};
 
-  // Color legend for the density plot (inside the same Box)
-  const densityLegend = (
-    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-      <Typography variant="caption" color="white" sx={{ mr: 1 }}>
-        Low ROI
-      </Typography>
-      <Box
-        sx={{
-          width: 100,
-          height: 10,
-          background: 'linear-gradient(to right, rgb(255,0,0), rgb(0,255,0))'
-        }}
-      />
-      <Typography variant="caption" color="white" sx={{ ml: 1 }}>
-        High ROI
-      </Typography>
-    </Box>
-  );
-
-  // 2. Parallel Coordinates Plot (Simulated via Line Chart)
-  const parallelLabels = ['Token Price', 'Token Supply', 'Fan ROI', 'Creator Royalty'];
-  const normalizedCurrent = [
-    recommendedTokenPrice / 10,
-    recommendedSupply / baseSupplyValue,
-    impliedFanROI / 100,
-    creatorRoyalty / 50
+// Chart helper: Generate Parallel Coordinates Data
+const generateParallelData = (finalTokenPrice, recommendedSupply, presentValue, discountRate) => {
+  const labels = ['Token Price', 'Token Supply', 'NPV', 'Discount Rate'];
+  const currentMetrics = [
+    finalTokenPrice * 0.97,
+    recommendedSupply * 1.03,
+    presentValue * 0.99,
+    discountRate,
   ];
-  const normalizedOptimized = [
-    optimizedTokenPrice / 10,
-    optimizedSupply / baseSupplyValue,
-    optimizedFanROI / 100,
-    optimizedCreatorRoyalty / 50
-  ];
-  const parallelData = {
-    labels: parallelLabels,
+  const optimizedMetrics = [finalTokenPrice, recommendedSupply, presentValue, discountRate];
+  const normalizedCurrent = optimizedMetrics.map((opt, idx) => currentMetrics[idx] / opt);
+  const normalizedOptimized = optimizedMetrics.map(() => 1);
+  return {
+    labels,
     datasets: [
       {
         label: 'Current Metrics',
@@ -187,7 +129,7 @@ function TokenomicsSuite() {
         tension: 0.3,
         fill: false,
         pointStyle: 'circle',
-        pointRadius: 4
+        pointRadius: 4,
       },
       {
         label: 'Optimized Metrics',
@@ -197,393 +139,486 @@ function TokenomicsSuite() {
         tension: 0.3,
         fill: false,
         pointStyle: 'rectRot',
-        pointRadius: 4
-      }
-    ]
-  };
-  const parallelOptions = {
-    maintainAspectRatio: false,
-    scales: {
-      x: {
-        type: 'category',
-        labels: parallelLabels,
-        ticks: { font: { size: 10 } }
+        pointRadius: 4,
       },
-      y: {
-        beginAtZero: true,
-        max: 1,
-        ticks: { font: { size: 10 } },
-        title: { display: true, text: 'Normalized Value' }
-      }
-    },
-    plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } },
-    responsive: true,
-    layout: { padding: 10 }
+    ],
   };
+};
 
-  // 3. Multi-Line Sensitivity Chart (Area Chart with Overlayed Lines)
-  const targetROIValues = [];
-  for (let roi = 10; roi <= 30; roi += 2) {
-    const supplyFixed = baseSupplyValue * ((100 - liquidityPreference + 50) / 150);
-    const price = presentValueRevenue / (supplyFixed * (1 + roi / 100));
-    targetROIValues.push({ x: roi, y: price });
+// Chart helper: Generate Sensitivity Data for the Multi-Line Sensitivity Chart
+const generateSensitivityData = (targetUnitValue) => {
+  const premiumRange = [];
+  for (let p = 5; p <= 20; p += 1) {
+    premiumRange.push(p);
   }
-  const liquidityValues = [];
-  for (let liq = 30; liq <= 70; liq += 5) {
-    const supplyVar = baseSupplyValue * ((100 - liq + 50) / 150);
-    const price = presentValueRevenue / (supplyVar * (1 + targetROI / 100));
-    liquidityValues.push({ x: liq, y: price });
+  const marketFactors = [0.9, 1.0, 1.1];
+  const datasets = marketFactors.map((mf, index) => {
+    const data = premiumRange.map((p) => targetUnitValue * (1 + p / 100) * mf);
+    const colors = ['#ff4081', '#00aeff', '#4caf50'];
+    return {
+      label: `Market Factor ${mf}`,
+      data,
+      borderColor: colors[index],
+      fill: false,
+      tension: 0.3,
+      pointRadius: 3,
+    };
+  });
+  return {
+    labels: premiumRange.map((p) => `${p}%`),
+    datasets,
+  };
+};
+
+// Chart helper: Generate Price Discovery Data
+const generatePriceDiscoveryData = (projectedRevenue, rDecimal, timeHorizon, recommendedSupply, finalTokenPrice) => {
+  const labels = [];
+  const perTokenValues = [];
+  let cumulative = 0;
+  for (let t = 1; t <= timeHorizon; t++) {
+    labels.push(`Year ${t}`);
+    cumulative += projectedRevenue / Math.pow(1 + rDecimal, t);
+    perTokenValues.push(cumulative / recommendedSupply);
   }
-  const sensitivityData = {
+  return {
+    labels,
     datasets: [
       {
-        label: 'Target ROI Sensitivity',
-        data: targetROIValues,
-        borderColor: 'rgba(255,99,132,1)',
-        backgroundColor: 'rgba(255,99,132,0.2)',
-        fill: true,
+        label: 'Per-Token Intrinsic Value',
+        data: perTokenValues,
+        borderColor: '#ff4081',
+        fill: false,
         tension: 0.3,
-        pointRadius: 3,
-        xAxisID: 'xTarget'
       },
       {
-        label: 'Liquidity Sensitivity',
-        data: liquidityValues,
-        borderColor: 'rgba(54,162,235,1)',
-        backgroundColor: 'rgba(54,162,235,0.2)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3,
-        xAxisID: 'xLiquidity'
-      }
-    ]
-  };
-  const sensitivityOptions = {
-    maintainAspectRatio: false,
-    scales: {
-      xTarget: {
-        type: 'linear',
-        position: 'bottom',
-        title: { display: true, text: 'Target ROI (%)' },
-        min: 10,
-        max: 30,
-        ticks: { stepSize: 2, font: { size: 10 } }
-      },
-      xLiquidity: {
-        type: 'linear',
-        position: 'bottom',
-        title: { display: true, text: 'Liquidity Preference' },
-        min: 30,
-        max: 70,
-        ticks: { stepSize: 5, font: { size: 10 } }
-      },
-      y: {
-        title: { display: true, text: 'Recommended Token Price ($)' },
-        ticks: { font: { size: 10 } }
-      }
-    },
-    plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } },
-    responsive: true,
-    layout: { padding: 10 }
-  };
-
-  // 4. Price Discovery Chart
-  const perTokenDiscovery = (() => {
-    const r = optimizedDiscountRate / 100;
-    const annualCF = presentValueRevenue * r / (1 - Math.pow(1 + r, -timeHorizon));
-    const dcfYears = [];
-    const cumulativeDCF = [];
-    let cumulative = 0;
-    for (let t = 1; t <= timeHorizon; t++) {
-      const cf = annualCF / Math.pow(1 + r, t);
-      cumulative += cf;
-      dcfYears.push(t);
-      cumulativeDCF.push(cumulative);
-    }
-    return cumulativeDCF.map(c => c / recommendedSupply);
-  })();
-  const priceDiscoveryData = {
-    labels: Array.from({ length: timeHorizon }, (_, i) => i + 1),
-    datasets: [
-      {
-        label: 'Per-Token Value ($)',
-        data: perTokenDiscovery,
-        borderColor: 'rgba(255,159,64,1)',
-        backgroundColor: 'rgba(255,159,64,0.2)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 3
-      },
-      {
-        label: 'Recommended Token Price',
-        data: Array(timeHorizon).fill(recommendedTokenPrice),
-        borderColor: 'rgba(54,162,235,1)',
+        label: 'Final Recommended Price',
+        data: Array(timeHorizon).fill(finalTokenPrice),
+        borderColor: '#00aeff',
         borderDash: [5, 5],
         fill: false,
-        pointRadius: 0
-      }
-    ]
+        pointRadius: 0,
+      },
+    ],
   };
-  const priceDiscoveryOptions = {
-    maintainAspectRatio: false,
-    scales: {
-      x: { title: { display: true, text: 'Year' }, ticks: { font: { size: 10 } } },
-      y: { title: { display: true, text: 'Per-Token Value ($)' }, ticks: { font: { size: 10 } } }
-    },
-    plugins: { legend: { position: 'bottom', labels: { font: { size: 12 } } } },
-    responsive: true,
-    layout: { padding: 10 }
-  };
+};
 
-  // =============================================================
-  // ADVANCED OPTIONS TOGGLE (Legacy Modules)
-  // =============================================================
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const advancedContent = (
-    <Accordion sx={{ mt: 2, bgcolor: 'black', color: 'white' }}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }} />}>
-        <Typography>Advanced Analysis</Typography>
-      </AccordionSummary>
-      <AccordionDetails>
-        <Typography variant="body2" color="white">
-          Additional analyses (e.g., Monte Carlo Simulation, Break-even Analysis, and Cash Flow Projections) can be integrated here.
-        </Typography>
-      </AccordionDetails>
-    </Accordion>
-  );
+function TokenomicsSuite() {
+  // Load saved offer evaluation data (if any) from localStorage
+  const savedData = localStorage.getItem('offerEvaluationData');
+  const initialData = savedData ? JSON.parse(savedData) : {};
 
-  // =============================================================
-  // MOUNTED STATE: Delay rendering charts until after mount
-  // =============================================================
-  const [mounted, setMounted] = useState(false);
+  // Basic Inputs (with defaults or saved values)
+  // Projected Revenue slider: min 50,000; max 500,000; step 1.
+  const [projectedRevenue, setProjectedRevenue] = useState(initialData.manualProjectedRevenue || 100000);
+  // Time Horizon slider now goes from 1 to 2 years.
+  const [timeHorizon, setTimeHorizon] = useState(initialData.timeHorizon || 1);
+
+  // Discount factors
+  const [riskFreeRate, setRiskFreeRate] = useState(initialData.riskFreeRate || 3);
+  const [equityRiskPremium, setEquityRiskPremium] = useState(initialData.equityRiskPremium || 5);
+  const [industryPremium, setIndustryPremium] = useState(initialData.industryPremium || 2.5);
+  const [manualDiscount, setManualDiscount] = useState(initialData.manualDiscount || false);
+
+  // Revenue Share percentage slider
+  const [revSharePct, setRevSharePct] = useState(initialData.revSharePct || 10);
+
+  // Offer Discount slider (default 10% discount on intrinsic value)
+  const [offerDiscount, setOfferDiscount] = useState(initialData.offerDiscount || 10);
+
+  // Market & Utility Inputs
+  const [marketFactor, setMarketFactor] = useState(initialData.marketFactor || 1.0);
+  const [targetUnitValue, setTargetUnitValue] = useState(initialData.targetUnitValue || 0.10);
+  const [offeringPremium, setOfferingPremium] = useState(initialData.offeringPremium || 10);
+
+  // New Input: Distribution Frequency in Days
+  const [distributionFrequency, setDistributionFrequency] = useState(initialData.distributionFrequency || 7);
+
+  // New Toggle: Allow Secondary Market Trading and its fields
+  const [allowSecondaryTrading, setAllowSecondaryTrading] = useState(initialData.allowSecondaryTrading || false);
+  const [platformFee, setPlatformFee] = useState(initialData.platformFee || 2);
+  const [creatorRoyalty, setCreatorRoyalty] = useState(initialData.creatorRoyalty || 5);
+
+  // Calculate effective intrinsic value
+  const effectiveIntrinsic = targetUnitValue * marketFactor;
+
+  // Calculate discount rate based on risk factors when enabled; otherwise, discount is 0.
+  const discountRate = manualDiscount ? (riskFreeRate + equityRiskPremium + industryPremium) : 0;
+  const rDecimal = discountRate / 100;
+
+  // Calculate overall NPV using Discounted Cash Flow
+  const [presentValue, setPresentValue] = useState(0);
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    let pvCalc = 0;
+    if (rDecimal > 0) {
+      for (let t = 1; t <= timeHorizon; t++) {
+        pvCalc += projectedRevenue / Math.pow(1 + rDecimal, t);
+      }
+    } else {
+      pvCalc = projectedRevenue * timeHorizon;
+    }
+    setPresentValue(pvCalc);
+  }, [projectedRevenue, rDecimal, timeHorizon]);
 
-  // =============================================================
-  // RENDERING THE COMPONENT
-  // =============================================================
+  // Calculate revenue share NPV, recommended supply, etc.
+  const npvRevShare = presentValue * (revSharePct / 100);
+  const recommendedSupply = effectiveIntrinsic > 0 ? npvRevShare / effectiveIntrinsic : 0;
+  const offerPrice = effectiveIntrinsic * (1 - offerDiscount / 100);
+  const recommendedTokenPrice = effectiveIntrinsic * (1 + offeringPremium / 100);
+  const tokenSaleRevenue = recommendedSupply * recommendedTokenPrice;
+  const percentRevenuePerToken = recommendedSupply ? (revSharePct / recommendedSupply) * 100 : 0;
+
+  // Helper to format numbers with commas
+  const formatNumber = (num) => Number(num).toLocaleString();
+
+  // Recommendation Breakdown Data
+  const recommendationBreakdown = {
+    offerPrice: offerPrice.toFixed(2),
+    recommendedTokenPrice: recommendedTokenPrice.toFixed(2),
+    recommendedSupply: Math.round(recommendedSupply),
+    tokenSaleRevenue: tokenSaleRevenue.toFixed(2),
+  };
+
+  // Advanced Analysis (Monte Carlo Simulation) – omitted from UI
+  const [mcData, setMcData] = useState(null);
+  const [mcStats, setMcStats] = useState({ avg: 0, stdDev: 0 });
+  useEffect(() => {
+    const iterations = 1000;
+    const simulatedPrices = [];
+    for (let i = 0; i < iterations; i++) {
+      const revenueSim = projectedRevenue * (1 + 0.10 * randn_bm());
+      const rSim = rDecimal * (1 + 0.01 * randn_bm());
+      let pvSim = 0;
+      for (let t = 1; t <= timeHorizon; t++) {
+        pvSim += projectedRevenue / Math.pow(1 + rSim, t);
+      }
+      const priceSim = (pvSim / effectiveIntrinsic) * (1 + offeringPremium / 100);
+      simulatedPrices.push(priceSim);
+    }
+    const avg = simulatedPrices.reduce((sum, v) => sum + v, 0) / iterations;
+    const variance = simulatedPrices.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / iterations;
+    const stdDev = Math.sqrt(variance);
+    setMcStats({ avg, stdDev });
+    const binCount = 20;
+    const minPrice = Math.min(...simulatedPrices);
+    const maxPrice = Math.max(...simulatedPrices);
+    const binSize = (maxPrice - minPrice) / binCount;
+    const bins = Array(binCount).fill(0);
+    simulatedPrices.forEach((price) => {
+      let binIndex = Math.floor((price - minPrice) / binSize);
+      if (binIndex >= binCount) binIndex = binCount - 1;
+      bins[binIndex]++;
+    });
+    setMcData({
+      labels: Array.from({ length: binCount }, (_, i) => (minPrice + binSize * i).toFixed(2)),
+      datasets: [
+        {
+          label: 'Final Price Distribution',
+          data: bins,
+          backgroundColor: 'rgba(75,192,192,0.6)',
+        },
+      ],
+    });
+  }, [projectedRevenue, rDecimal, timeHorizon, effectiveIntrinsic, offeringPremium]);
+
+  // Break-even Analysis
+  const costThreshold = 0.5 * projectedRevenue * timeHorizon;
+  let breakEvenYear = 'N/A';
+  const cumulativeDCF = [];
+  let cumulative = 0;
+  for (let t = 1; t <= timeHorizon; t++) {
+    cumulative += projectedRevenue / Math.pow(1 + rDecimal, t);
+    cumulativeDCF.push(cumulative);
+    if (breakEvenYear === 'N/A' && cumulative >= costThreshold) {
+      breakEvenYear = t;
+    }
+  }
+  const breakEvenData = {
+    labels: Array.from({ length: timeHorizon }, (_, i) => `Year ${i + 1}`),
+    datasets: [
+      {
+        label: 'Cumulative DCF',
+        data: cumulativeDCF,
+        borderColor: '#ff4081',
+        fill: false,
+        tension: 0.3,
+      },
+      {
+        label: 'Cost Threshold',
+        data: Array(timeHorizon).fill(costThreshold),
+        borderColor: '#00aeff',
+        borderDash: [5, 5],
+        fill: false,
+        pointRadius: 0,
+      },
+    ],
+  };
+
+  // Handle Preview and Deploy: Connect to wallet and deploy token live.
+  const handleDeploy = async () => {
+    if (window.ethereum) {
+      try {
+        // Request account access
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        console.log("Connected account:", accounts[0]);
+        const { ethers } = await import("ethers");
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        // TODO: Replace the following placeholder values with your token contract's ABI and bytecode.
+        const tokenAbi = [ /* Your token contract ABI here */ ];
+        const tokenBytecode = "0x..."; // Your token contract bytecode here
+        const factory = new ethers.ContractFactory(tokenAbi, tokenBytecode, signer);
+        // Optionally, pass constructor parameters if required.
+        const contract = await factory.deploy(/* constructor parameters if any */);
+        await contract.deployed();
+        alert(`Token deployed successfully at address: ${contract.address}`);
+      } catch (error) {
+        console.error("Error deploying token:", error);
+        alert("Failed to deploy token.");
+      }
+    } else {
+      alert("Please install MetaMask or another Ethereum wallet extension.");
+    }
+  };
+
+  // Proceed button: Save slider state to localStorage for Tokenomics Suite.
+  const handleProceed = () => {
+    const dataToSave = {
+      manualProjectedRevenue,
+      totalFollowers: initialData.totalFollowers,  // if applicable
+      engagementRate: initialData.engagementRate,      // if applicable
+      conversionFactor: initialData.conversionFactor,    // if applicable
+      totalViews: initialData.totalViews,                // if applicable
+      cpm: initialData.cpm,                              // if applicable
+      numberOfSubscribers: initialData.numberOfSubscribers, // if applicable
+      monthlySubscriptionFee: initialData.monthlySubscriptionFee, // if applicable
+      numberOfPPVPurchases: initialData.numberOfPPVPurchases, // if applicable
+      ppvPrice: initialData.ppvPrice,                    // if applicable
+      timeHorizon,
+      riskFreeRate,
+      equityRiskPremium,
+      industryPremium,
+      revSharePct,
+      offerDiscount,
+      targetUnitValue,
+      manualDiscount,
+      distributionFrequency,
+      allowSecondaryTrading,
+      platformFee,
+      creatorRoyalty,
+    };
+    localStorage.setItem('offerEvaluationData', JSON.stringify(dataToSave));
+    // Proceed to the next page if needed.
+  };
+
   return (
     <Container sx={{ mt: 5 }}>
-      <Typography variant="h4" color="white" gutterBottom>
-        Tokenomics Suite
-      </Typography>
-      <Typography variant="subtitle1" color="white" gutterBottom>
-        Determine the optimal token price, supply, and creator royalty to maximize fan ROI and promote a thriving secondary market.
-      </Typography>
-
-      {/* Top Row: Core Inputs & Discount Rate Calculator */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-        {/* Core Inputs */}
-        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-          <Typography variant="h6" color="white">Core Inputs</Typography>
-          <SliderWithValue
-            label="Projected Revenue ($)"
-            min={0}
-            max={10000000}
-            step={100000}
-            value={projectedRevenue}
-            onChange={(e, newValue) => setProjectedRevenue(newValue)}
-          />
-          <SliderWithValue
-            label="Time Horizon (Years)"
-            min={1}
-            max={20}
-            step={1}
-            value={timeHorizon}
-            onChange={(e, newValue) => setTimeHorizon(newValue)}
-          />
-          <SliderWithValue
-            label="Target ROI for Fans (%)"
-            min={0}
-            max={100}
-            step={1}
-            value={targetROI}
-            onChange={(e, newValue) => setTargetROI(newValue)}
-          />
-        </Box>
-
-        {/* Discount Rate Calculator */}
-        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-          <Typography variant="h6" color="white">Discount Rate Calculator</Typography>
-          <SliderWithValue
-            label="Risk-Free Rate (%)"
-            min={0}
-            max={10}
-            step={0.1}
-            value={riskFreeRate}
-            onChange={(e, newValue) => setRiskFreeRate(newValue)}
-          />
-          <SliderWithValue
-            label="Equity Risk Premium (%)"
-            min={0}
-            max={20}
-            step={0.1}
-            value={equityRiskPremium}
-            onChange={(e, newValue) => setEquityRiskPremium(newValue)}
-          />
-          <SliderWithValue
-            label="Industry Premium (%)"
-            min={0}
-            max={10}
-            step={0.1}
-            value={industryPremium}
-            onChange={(e, newValue) => setIndustryPremium(newValue)}
-          />
-          <Typography variant="body2" color="white" sx={{ mt: 1 }}>
-            Optimized Discount Rate: {optimizedDiscountRate.toFixed(2)}%
-          </Typography>
-        </Box>
-      </Box>
-
-      {/* Second Row: Liquidity & Royalty Inputs & Optimized Recommendations */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 4 }}>
-        {/* Liquidity & Royalty Inputs */}
-        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-          <Typography variant="h6" color="white">Liquidity & Royalty Inputs</Typography>
-          <SliderWithValue
-            label="Liquidity Preference"
-            min={0}
-            max={100}
-            step={1}
-            value={liquidityPreference}
-            onChange={(e, newValue) => setLiquidityPreference(newValue)}
-          />
-          <SliderWithValue
-            label="Base Creator Royalty (%)"
-            min={0}
-            max={50}
-            step={0.5}
-            value={creatorRoyalty}
-            onChange={(e, newValue) => setCreatorRoyalty(newValue)}
-          />
-        </Box>
-
-        {/* Optimized Recommendations */}
-        <Box sx={{ flex: 1, minWidth: { xs: '100%', md: '48%' }, p: 2, bgcolor: 'black', borderRadius: 2 }}>
-          <Typography variant="h6" color="white">Optimized Recommendations</Typography>
-          <Typography variant="body2" color="white">
-            Present Value of Revenue (over {timeHorizon} years at {optimizedDiscountRate.toFixed(2)}%):
-            ${presentValueRevenue.toFixed(2)}
-          </Typography>
-          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
-            Recommended Token Supply: {Math.round(recommendedSupply).toLocaleString()} tokens
-          </Typography>
-          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
-            Recommended Token Price: ${recommendedTokenPrice.toFixed(2)} per token
-          </Typography>
-          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
-            Implied Fan ROI: {impliedFanROI.toFixed(2)}%
-          </Typography>
-          <Typography variant="body1" color="white" sx={{ mt: 1 }}>
-            Recommended Creator Royalty: {optimizedCreatorRoyalty.toFixed(2)}%
-          </Typography>
-        </Box>
-      </Box>
-
-      {/* Third Section: Advanced Visualizations (4 Quadrants) */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 4 }}>
-        {/* Quadrant 1: Plot Density (Contour Plot) with Legend inside the same Box */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: { xs: '100%', md: '48%' },
-            p: 2,
-            bgcolor: 'black',
-            borderRadius: 2,
-            height: 350,
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          <Typography variant="h6" color="white" sx={{ mb: 1, textAlign: 'center' }}>
-            Plot Density
-          </Typography>
-          <Box sx={{ flex: 1, width: '100%' }}>
-            {mounted && (
-              <Scatter data={densityData} options={{ ...densityOptions, maintainAspectRatio: false }} />
-            )}
+      <Typography variant="h4" color="white" gutterBottom>Tokenomics Suite</Typography>
+      
+      {/* Financial and Market Inputs */}
+      <Grid container spacing={2}>
+        {/* Left Column: Financial Inputs */}
+        <Grid item xs={12} md={6}>
+          <Box sx={{ p: 2, bgcolor: 'black', borderRadius: 2 }}>
+            <Typography variant="h6" color="white">Financial Inputs</Typography>
+            <SliderWithValue
+              label="Projected Revenue ($)"
+              value={projectedRevenue}
+              onChange={setProjectedRevenue}
+              min={50000}
+              max={500000}
+              step={1}
+              tooltip="Enter the annual revenue expected (50,000 - 500,000)"
+            />
+            <SliderWithValue
+              label="Time Horizon (Years)"
+              value={timeHorizon}
+              onChange={setTimeHorizon}
+              min={1}
+              max={2}
+              step={1}
+              tooltip="Years to discount future revenue"
+         
+            />
+            <Box sx={{ mt: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={manualDiscount}
+                    onChange={(e) => setManualDiscount(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Apply Discount Rate"
+                sx={{ color: 'white' }}
+              />
+              {manualDiscount && (
+                <Box sx={{ mt: 1 }}>
+                  {/* Inline risk sliders matching the style of other sliders */}
+                  <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" color="white" sx={{ display: 'block' }}>Risk-Free (%)</Typography>
+                      <Slider
+                        value={riskFreeRate}
+                        onChange={(e, newValue) => setRiskFreeRate(newValue)}
+                        min={0}
+                        max={10}
+                        step={0.5}
+                        valueLabelDisplay="auto"
+                        sx={{ color: 'primary.main' }}
+                      />
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" color="white" sx={{ display: 'block' }}>Equity (%)</Typography>
+                      <Slider
+                        value={equityRiskPremium}
+                        onChange={(e, newValue) => setEquityRiskPremium(newValue)}
+                        min={0}
+                        max={10}
+                        step={0.5}
+                        valueLabelDisplay="auto"
+                        sx={{ color: 'primary.main' }}
+                      />
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" color="white" sx={{ display: 'block' }}>Industry (%)</Typography>
+                      <Slider
+                        value={industryPremium}
+                        onChange={(e, newValue) => setIndustryPremium(newValue)}
+                        min={0}
+                        max={5}
+                        step={0.5}
+                        valueLabelDisplay="auto"
+                        sx={{ color: 'primary.main' }}
+                      />
+                    </Box>
+                  </Box>
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="subtitle1" color="white">
+                      Current Discount Rate: {(riskFreeRate + equityRiskPremium + industryPremium).toFixed(2)}%
+                    </Typography>
+                    <Typography variant="caption" color="white">
+                      (Risk-Free: {riskFreeRate}%, Equity: {equityRiskPremium}%, Industry: {industryPremium}%)
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+            <SliderWithValue
+              label="Revenue Share (%)"
+              value={revSharePct}
+              onChange={setRevSharePct}
+              min={0}
+              max={100}
+              step={1}
+              tooltip="Percentage of future revenue to acquire"
+            />
+            <SliderWithValue
+              label="Offer Discount (%)"
+              value={offerDiscount}
+              onChange={setOfferDiscount}
+              min={0}
+              max={50}
+              step={1}
+              tooltip="Discount applied to intrinsic value for offer price (default 10%)"
+            />
           </Box>
-          <Box sx={{ mt: 1, textAlign: 'center' }}>
-            {densityLegend}
+        </Grid>
+        {/* Right Column: Market & Utility Inputs */}
+        <Grid item xs={12} md={6}>
+          <Box sx={{ p: 2, bgcolor: 'black', borderRadius: 2 }}>
+            <Typography variant="h6" color="white">Market & Utility Inputs</Typography>
+            <SliderWithValue
+              label="Market Factor"
+              value={marketFactor}
+              onChange={setMarketFactor}
+              min={0.5}
+              max={2.0}
+              step={0.1}
+              tooltip="Market multiplier (1.0 = neutral)"
+            />
+            <SliderWithValue
+              label="Target Unit Value ($/token)"
+              value={targetUnitValue}
+              onChange={setTargetUnitValue}
+              min={0.001}
+              max={5.0}
+              step={0.001}
+              tooltip="Desired intrinsic value per token"
+            />
+            <SliderWithValue
+              label="Offering Premium (%)"
+              value={offeringPremium}
+              onChange={setOfferingPremium}
+              min={0}
+              max={50}
+              step={1}
+              tooltip="Premium over intrinsic value (Recommended Token Price = Intrinsic Value × (1 + Premium/100))"
+            />
           </Box>
-        </Box>
-
-        {/* Quadrant 2: Parallel Coordinates Plot */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: { xs: '100%', md: '48%' },
-            p: 2,
-            bgcolor: 'black',
-            borderRadius: 2,
-            height: 350,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <Typography variant="h6" color="white" sx={{ mb: 1 }}>
-            Parallel Coordinates Plot
-          </Typography>
-          {mounted && <Line data={parallelData} options={parallelOptions} />}
-        </Box>
-
-        {/* Quadrant 3: Multi-Line Sensitivity Chart */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: { xs: '100%', md: '48%' },
-            p: 2,
-            bgcolor: 'black',
-            borderRadius: 2,
-            height: 350,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <Typography variant="h6" color="white" sx={{ mb: 1 }}>
-            Multi-Line Sensitivity Chart
-          </Typography>
-          {mounted && (
-            <Line data={sensitivityData} options={sensitivityOptions} />
-          )}
-        </Box>
-
-        {/* Quadrant 4: Price Discovery Chart */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: { xs: '100%', md: '48%' },
-            p: 2,
-            bgcolor: 'black',
-            borderRadius: 2,
-            height: 350,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <Typography variant="h6" color="white" sx={{ mb: 1 }}>
-            Price Discovery Chart
-          </Typography>
-          {mounted && (
-            <Line data={priceDiscoveryData} options={priceDiscoveryOptions} />
-          )}
-        </Box>
+        </Grid>
+      </Grid>
+      
+      {/* Full-Width Offer and Token Recommendations Panel */}
+      <Box sx={{ mt: 4, p: 2, bgcolor: 'black', borderRadius: 2, width: '100%' }}>
+        <Typography variant="h6" color="white" align="center" gutterBottom>
+          Offer and Token Recommendations
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={2}>
+            <Tooltip title="Offer Price = Intrinsic Value × (1 - Offer Discount/100)" arrow>
+              <Typography variant="subtitle2" color="white" align="center">
+                Offer Price
+              </Typography>
+            </Tooltip>
+            <Typography variant="h6" color="white" align="center">
+              ${formatNumber(recommendationBreakdown.offerPrice)}
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={2}>
+            <Tooltip title="Recommended Token Price = Intrinsic Value × (1 + Offering Premium/100)" arrow>
+              <Typography variant="subtitle2" color="white" align="center">
+                Recommended Token Price
+              </Typography>
+            </Tooltip>
+            <Typography variant="h6" color="white" align="center">
+              ${formatNumber(recommendationBreakdown.recommendedTokenPrice)}
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Tooltip title="Recommended Token Supply = (NPV of Revenue Share) ÷ (Intrinsic Value)" arrow>
+              <Typography variant="subtitle2" color="white" align="center">
+                Recommended Token Supply
+              </Typography>
+            </Tooltip>
+            <Typography variant="h6" color="white" align="center">
+              {formatNumber(recommendationBreakdown.recommendedSupply)} tokens
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Tooltip title="Token Sale Revenue = Recommended Supply × Recommended Token Price" arrow>
+              <Typography variant="subtitle2" color="white" align="center">
+                Token Sale Revenue
+              </Typography>
+            </Tooltip>
+            <Typography variant="h6" color="white" align="center">
+              ${formatNumber(recommendationBreakdown.tokenSaleRevenue)}
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={2}>
+            <Tooltip title="Percent Revenue per Token = (Revenue Share (%) ÷ Recommended Token Supply) × 100" arrow>
+              <Typography variant="subtitle2" color="white" align="center">
+                % Revenue per Token
+              </Typography>
+            </Tooltip>
+            <Typography variant="h6" color="white" align="center">
+              {percentRevenuePerToken.toFixed(3)}%
+            </Typography>
+          </Grid>
+        </Grid>
       </Box>
-
-      {/* Advanced Options Toggle */}
-      <Box sx={{ mt: 4 }}>
-        <Button variant="outlined" color="primary" onClick={() => setShowAdvanced(!showAdvanced)}>
-          {showAdvanced ? 'Hide Advanced Analysis' : 'Show Advanced Analysis'}
-        </Button>
-      </Box>
-      {showAdvanced && advancedContent}
+  
+      {/* Advanced Analysis section removed as per requirements */}
+  
     </Container>
   );
 }
